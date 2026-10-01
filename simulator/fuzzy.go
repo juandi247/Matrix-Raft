@@ -24,8 +24,8 @@ type FuzzyConfig struct {
 const minCrashNodeDowntime= 10
 const maxCrashNodeDowntime=50
 
-const minLatencyDelay= 1
-const maxLatencyDelay= 3
+const minLatencyDelay= 3
+const maxLatencyDelay= 20
 
 
 var FuzzyConfigMap = map[FuzzyLevel]FuzzyConfig{

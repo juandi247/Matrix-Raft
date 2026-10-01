@@ -2,7 +2,7 @@ package simulator
 
 import (
 	"math/rand"
-	"simba/raft"
+	"simba/newraft"
 )
 
 
@@ -15,14 +15,17 @@ func GenerateRequests(rng *rand.Rand) []SimMessage {
 
 	arr:= make([]SimMessage, numberOfRequests)
 
-	for i:=0; i<1000; i++{
+	for i:=range 1000{
 	arr[i] = SimMessage{
 			id: i,
-			Message: raft.NewEntry{
-				Command: GenerateRandomString(rng),
-			},
-			//minimum 20 and max the ticks
 			DeliveryTick: 10 + rng.Intn(maxTicks-10 +1) ,
+			Message: newraft.Message{
+				Type: newraft.MsgNewEntry,
+				Payload: newraft.FrontEndEntry{
+					Magic: "SKIPPER",
+					Entry: GenerateRandomString(rng),
+					},
+				},
 		}
 
 	}

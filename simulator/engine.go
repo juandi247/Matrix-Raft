@@ -3,10 +3,11 @@ package simulator
 import (
 	"container/heap"
 	"fmt"
-	raft "simba/raft"
+	"simba/newraft"
+	"strconv"
 	"time"
 )
-
+ 
 type SimulationRunner struct {
 	Time               *SimTime
 	Network            *SimNetwork
@@ -16,7 +17,7 @@ type SimulationRunner struct {
 	LeaderId 	int
 }
 
-func (s *SimulationRunner) Start() {
+func (s *SimulationRunner) Start(eventChan chan int) {
 
 	// Config for the simulated Time struct
 	s.Time.Tick = 0
@@ -41,12 +42,18 @@ func (s *SimulationRunner) Start() {
 	for s.Time.Now() <= maxTicks {
 		// advance 1 tick
 		s.Time.Advance(TickFrequency)
+		currTick:= int(s.Time.Now())
+		fmt.Println("hola antes de mandar el tick")
+		eventChan <- currTick
 
-		crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
+
+		fmt.Printf("Starting tick:  %v \n", s.Time.Now())
+
+		//crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
 
 		updateNodeTimers(nodeList)
 
-		handleComeBackToLiveNode(nodeList, s.Time.Now())
+		//handleComeBackToLiveNode(nodeList, s.Time.Now())
 
 		handleTimeout(nodeList, s.Network)
 
@@ -54,18 +61,10 @@ func (s *SimulationRunner) Start() {
 		if s.Network.messageQueue.Len() > 0 {
 			readMessagesToInbox(s.Network, nodeList)
 		}
-	/*	if s.Network.messageInbox.size > 0 {
-			shuffleInbox(s.FuzzyProbabilities.rand, s.Network)
-			deliverInboxMessages(s.Network, nodeList)
-		}
-*/
-		fmt.Printf("Tick %v completed. \n", s.Time.Now())
-		time.Sleep(10* time.Millisecond)
+
+		time.Sleep(800* time.Millisecond)
 
 
-		if s.Time.Now()>=40{
-			time.Sleep(1000*time.Millisecond)
-		}
 		
 	}
 }
@@ -73,6 +72,7 @@ func (s *SimulationRunner) Start() {
 func (s *SimulationRunner) Stop() {
 }
 
+/* LAST LOG INDEX del leader o de mi current user, +1 , y claro esto deberia estar es en el propio */
 func initializeNextIndex(nodesNumber, id int) map[int]int{
 	mapita:= make(map[int]int, nodesNumber-1)
 
@@ -102,41 +102,51 @@ func initializeMatchIndex(nodesNumber, id int) map[int]int{
 
 
 
+func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
+	nodeList:= make([]*newraft.Node, newraft.TotalNodes)
 
-func initializeNodes(fuzzyProbabilites FuzzyConfig) []*raft.Node {
-	nodeList := make([]*raft.Node, raft.TotalNodesNumber)
+	for i := 1; i <= int(newraft.TotalNodes); i++ {
 
-	for i := 1; i <= int(raft.TotalNodesNumber); i++ {
 
-		 timeout := generateFollowerTimeout(fuzzyProbabilites.rand)
-
+		heartbeatTimeout:= int(generateHeartbeatTimeout(fuzzyProbabilites.rand))
+		//ESTO ES TEMPORALLL!!!
 		if i==1{
-			timeout=3
+			heartbeatTimeout=2
 		}
-		nodeList[i-1] = &raft.Node{
-			Id:            i,
-			FriendNodesId: buildFriendsIds(int(raft.TotalNodesNumber), i),
-			Role:          raft.FOLLOWER,
-			CurrentTerm:   0,
-			//leader NOT USED because all will start as candidates. so this will be null for now (or cero)
-			Leader:   0,
-			VotedFor: make(map[int]int),
-			Log: raft.Log{
-				Size:   0,
-				LogArr: make([]*raft.LogBase, raft.MaxLogSize),
-			},
-			CommitIndex:     0,
-			NextIndex: initializeNextIndex(int(raft.TotalNodesNumber), i),
-			MatchIndex: initializeMatchIndex(int(raft.TotalNodesNumber), i),
-			Timeout:         timeout,
-			LeaderHeartbeat: LeaderHeartbeatFreq,
+		id:= "Node"+strconv.Itoa(i)
 
-			SimulatorFields: &raft.SimulatorFields{
-				LeaderHeartbeatCounter: LeaderHeartbeatFreq,
-				Alive:                  true,
-				ComeBackToLiveTick:     0,
-				Timeoutcounter:         timeout,
+		nodeList[i-1] = &newraft.Node{
+			Id: id,
+			CurrentRole: newraft.FOLLOWER,
+			OtherNodesId: buildFriendsIds(newraft.TotalNodes, i),
+			CurrentLeader: "",
+
+
+			//TODO: check this instead of cero would be the normal timoeutj
+			HeartbeatTimeout: heartbeatTimeout,
+			ElectionTimeout: ElectionTimeout,
+			SendAppendEntriesTimeout: SendAppendEntriesFreq,
+
+			CurrTerm: 0,
+			VotedFor: "",
+			Log: []newraft.Entry{
+				newraft.Entry{Term: 0, Value: "SKIPPER"},
+			},
+
+			CommitIndex: 0,
+			LastApplied: 0, 
+
+			NextIndex: make(map[string]int),
+			MatchIindex: make(map[string]int), 
+			VotesGranted: make(map[string]int), 
+
+			//TODO: Simulator fields, que son importantes solo para los ticks de reducir los teimotus nada mas
+			
+			SimulatorFields: newraft.SimulatorFields{
+				HeartbeatTimeoutCounter: heartbeatTimeout,
 				ElectionTimeoutCounter: ElectionTimeout,
+				SendAppendEntriesTimeoutCounter: SendAppendEntriesFreq,
+				Alive: true,
 			},
 		}
 	}
@@ -145,8 +155,9 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*raft.Node {
 
 }
 
-func crashNodes(nodeList []*raft.Node, fuzzyProbabilites FuzzyConfig, currentTick int64) {
+func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, currentTick int64) {
 	for _, node := range nodeList {
+		//TODO: uncomment this because its not ACTIVE
 		//shouldCrash, comeBackToLiveTick := fuzzyProbabilites.determineCrashingProbabily()
 		shouldCrash:=false
 		if !shouldCrash {
@@ -158,16 +169,17 @@ func crashNodes(nodeList []*raft.Node, fuzzyProbabilites FuzzyConfig, currentTic
 		//node.SimulatorFields.ComeBackToLiveTick = currentTick + comeBackToLiveTick
 	}
 }
+ 
 
-func updateNodeTimers(nodeList []*raft.Node) {
+func updateNodeTimers(nodeList []*newraft.Node) {
 	for _, node := range nodeList {
-		switch node.Role {
-		case raft.LEADER:
-			node.SimulatorFields.LeaderHeartbeatCounter--
-		case raft.CANDIDATE:
+		switch node.CurrentRole {
+		case newraft.FOLLOWER:
+			node.SimulatorFields.HeartbeatTimeoutCounter--
+		case newraft.CANDIDATE:
 			node.SimulatorFields.ElectionTimeoutCounter--
-		case raft.FOLLOWER:
-			node.SimulatorFields.Timeoutcounter--
+		case newraft.LEADER:
+			node.SimulatorFields.SendAppendEntriesTimeoutCounter--
 		default:
 			panic("a node does not have a valid role")
 		}
@@ -175,8 +187,8 @@ func updateNodeTimers(nodeList []*raft.Node) {
 	}
 	
 }
-
-func handleComeBackToLiveNode(nodeList []*raft.Node, currentTick int64) {
+/*
+func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64) {
 
 	for _, node := range nodeList {
 		if node.SimulatorFields.ComeBackToLiveTick <= currentTick && !node.SimulatorFields.Alive {
@@ -187,9 +199,9 @@ func handleComeBackToLiveNode(nodeList []*raft.Node, currentTick int64) {
 		}
 
 	}
-}
+}*/
 
-func readMessagesToInbox(sn *SimNetwork, nodeList []*raft.Node) {
+func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node) {
 
 	if sn.messageQueue.Len()<=0{
 		panic("wtf this hsuold be bigger than cero")
@@ -200,73 +212,107 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*raft.Node) {
 		if msg.DeliveryTick > int(sn.TimeAdapter.Now()) {
 			return
 		}
-		msg = sn.messageQueue.Pop().(*SimMessage)		//this should changeb
-		receiverNodeID := 0
-
+		//ESTE POP Es lo que me jode no?
+		msg = heap.Pop(sn.messageQueue).(*SimMessage)
+/*
 		if _, isEntry := msg.Message.(raft.NewEntry); isEntry{
-			leaderId:= checkLeader(nodeList)
-			if leaderId==0{
+			 //leaderId:= checkLeader(nodeList)
+			leaderId := "Node1"
+			//if leaderId==0{
 			fmt.Println("there is no current LEADER to respond this message")
 				continue
 			}
 			receiverNodeID = leaderId
 
+
 		}else{
 			receiverNodeID= msg.Message.GetReceiver() 
 		}
-		fmt.Printf("Message para deliverear: %T\n", msg.Message)
-		
-		if receiverNodeID <0{
-			panic("menor a cero wwtf")
+*/ 
+
+		receiverNodeId:= msg.Message.ReceiverId
+
+		fmt.Println("RECEVIER NODE: ", receiverNodeId)
+		if receiverNodeId == ""{
+			panic("receiver id was empty")
 		}
-		node:= nodeList[receiverNodeID-1]
+
 		
-		responseMessages:=node.ProcessMessage(msg.Message)
-		sn.SendMessage(responseMessages)
+
+		 for _ , node:=range nodeList{
+			if node.Id == receiverNodeId{
+				fmt.Printf("%v VA a hacer HANLDE EVENT \n de mensaje desde: %v con deliveryTick: %v\n", node.Id, msg.Message.SenderId, msg.DeliveryTick)
+				responseMessages:=node.HandleEvent(msg.Message)
+				if len(responseMessages)==0{
+					fmt.Println("resopnse messages fue CERO")
+				}
+
+				fmt.Printf("Desde: %v respondimos con:  %v mensajes \n", node.Id, len(responseMessages))
+				sn.SendMessage(responseMessages)
+			}
+		}
+		
 	}
 
 }
 
-func checkLeader(nodeList []*raft.Node) int{
+/*
+func checkLeader(nodeList []*newraft.Node) int{
 	leader:=0
 	maxTerm:=0
 	for _ , n :=range nodeList{
-		if n.Role == raft.LEADER && n.CurrentTerm > uint64(maxTerm){
+		if n.Role == newraft.LEADER && n.CurrentTerm > uint64(maxTerm){
 			leader= n.Id
 		} 
 	}
 	return leader
 }
+*/
 
 
 /*
 ACA ya se habran reducido los tiks por nodo. por lo tanto lo unico seria validar el teimpo no?
 */
-func handleTimeout(nodeList []*raft.Node, sm *SimNetwork) {
+func handleTimeout(nodeList []*newraft.Node, sm *SimNetwork) {
 
+	/*TODO: aca tendria que poner esto al principio de la queue de cada NODO, si o si, asi es trigereado el timeout*/
 	for _, node := range nodeList {
 		if !node.SimulatorFields.Alive {
 			continue
 		}
 
-		switch node.Role {
-		case raft.LEADER:
-			if node.SimulatorFields.LeaderHeartbeatCounter <= 0 {
-				fmt.Println("we reached a timeout leader")
-				msg := node.TriggerHeartbeat()
-				sm.SendMessage(msg)
-			}
-		case raft.FOLLOWER:
-			if node.SimulatorFields.Timeoutcounter <= 0 {
+		switch node.CurrentRole {
+
+		case newraft.FOLLOWER:
+			if node.SimulatorFields.HeartbeatTimeoutCounter <= 0 {
 				fmt.Printf("we reached a timeout follower id: %v, this should trigger a election \n", node.Id)
-				timeoutMessages := node.TriggerTimeout()
-				sm.SendMessage(timeoutMessages)
+				node.SimulatorFields.HeartbeatTimeoutCounter = node.HeartbeatTimeout
+				sm.SendTimeout(newraft.Message{
+					Type: newraft.MsgHeartbeatTimeout,
+					ReceiverId: node.Id,
+					})
 			}
-		case raft.CANDIDATE:
+
+
+		case newraft.CANDIDATE:
 			if node.SimulatorFields.ElectionTimeoutCounter <= 0 {
 				fmt.Println("we reached a timeout candidate")
-				timeoutMessage := node.TriggerElectionTimeout()
-				sm.SendMessage(timeoutMessage)
+				node.SimulatorFields.ElectionTimeoutCounter = node.ElectionTimeout
+				sm.SendTimeout(newraft.Message{
+					Type: newraft.MsgElectionTimeout,
+					ReceiverId: node.Id,
+				})
+
+			}
+
+		case newraft.LEADER:
+			if node.SimulatorFields.SendAppendEntriesTimeoutCounter <= 0 {
+				fmt.Println("we reached a timeout leader")
+				node.SimulatorFields.SendAppendEntriesTimeoutCounter = node.SendAppendEntriesTimeout
+				sm.SendTimeout(newraft.Message{
+					Type: newraft.MsgSendAppendEntriesTimeout,
+					ReceiverId: node.Id,
+				})
 			}
 		}
 	}

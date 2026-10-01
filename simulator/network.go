@@ -3,7 +3,7 @@ package simulator
 import (
 	"fmt"
 	"simba/adapters"
-	raft "simba/raft"
+	"simba/newraft"
 )
 
 type SimNetwork struct {
@@ -16,32 +16,60 @@ type SimMessage struct {
 	index int
 	id int
 	DeliveryTick int
-	Message      raft.Message
+	Message      newraft.Message
 }
 
 
 
-func (s *SimNetwork) SendMessage(messages []raft.Message) {
-	fmt.Printf("we are going to put in teh queue %v messages \n", len(messages))
+func (s *SimNetwork) SendMessage(messages []newraft.Message) {
+	fmt.Printf("we are going to put in the queue %v messages \n\n", len(messages))
 	for _, message := range messages {
 		var delayTicks int64
 		var lost bool
-		if isNetworkMessage(message) {
-			lost, delayTicks = s.FuzzyConfig.RandomizeNetwork()
-		} else {
-			lost, delayTicks = false, 1
-		}
+		lost, delayTicks = s.FuzzyConfig.RandomizeNetwork()
+
+
+		fmt.Println("ReceiverID: ", message.ReceiverId, "deliveryTick: ", s.TimeAdapter.Now()+delayTicks)
 		//TODO: there should be a tracker or something for the later UI that indicates that a message was LOST
 		if !lost {
-			simMessage := SimMessage{
+			simMessage := &SimMessage{
 				DeliveryTick: int(s.TimeAdapter.Now() + delayTicks),
 				Message:      message,
 			}
-			s.messageQueue.Push(&simMessage)
+			s.messageQueue.Push(simMessage)
 		}
+		
 	}
+
+	s.printQueueData()
 }
 
+
+func (s *SimNetwork) printQueueData(){
+	fmt.Println("-------------- QUEUE DATA on Tick ", s.TimeAdapter.Now(), "-------------------")
+
+	for i, v:= range *s.messageQueue{
+ 	fmt.Printf(
+            "[%d] deliveryTick=%d  senderId=%v receiverId=%v \n",
+		i, 
+            v.DeliveryTick,
+            v.Message.SenderId,
+            v.Message.ReceiverId,
+
+        )
+		
+
+	}
+	fmt.Println("---------------")
+}
+
+func (s *SimNetwork) SendTimeout(msg newraft.Message){
+	simMessage:= &SimMessage{
+		DeliveryTick: int(s.TimeAdapter.Now()) - 1,
+		Message: msg,
+	}
+	s.messageQueue.Push(simMessage)
+}
 
 
 

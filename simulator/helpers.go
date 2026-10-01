@@ -3,15 +3,15 @@ package simulator
 import (
 	"fmt"
 	"math/rand"
-	"simba/raft"
+	"strconv"
 )
 
 
-func buildFriendsIds(numberOfFriends int, currId int) []int{
-	rta:= []int{}
+func buildFriendsIds(numberOfFriends int, nodeIndex int) []string{
+	rta:= []string{}
 	for i:=1; i<=numberOfFriends; i++{
-		if i!=currId{
-		rta = append(rta, i)
+		if i!=nodeIndex{
+		rta = append(rta, "Node"+strconv.Itoa(i))
 		}
 
 	}
@@ -19,21 +19,9 @@ func buildFriendsIds(numberOfFriends int, currId int) []int{
 }
 
 
-func isNetworkMessage(message raft.Message) bool {
-	/*
-		this messages of Timeouts, come from goroutines in the real life, on the same execute, so they dont pass the simulated network fuzzer
-	*/
-	if message.GetType() == raft.MsgLeaderTimeout ||
-		message.GetType() == raft.MsgHeartbeatTimeout ||
-		message.GetType() == raft.MsgLeaderTimeout {
-		return false
-	}
-	return true
 
-}
-
-func generateFollowerTimeout(rng *rand.Rand) uint32 {
-	t:= uint32(MinFollowerTimeout + rng.Intn(MaxFollowerTimeout-MinFollowerTimeout+1))
+func generateHeartbeatTimeout(rng *rand.Rand) uint32 {
+	t:= uint32(MinHeartBeatTimeout + rng.Intn(MaxHeartBeatTimeout-MinHeartBeatTimeout+1))
 	fmt.Println("timeout generado es: ", t) 
 	return t
 }
