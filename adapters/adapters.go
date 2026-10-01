@@ -1,9 +1,6 @@
 package adapters
 
-
-import (
-	raft "simba/raft"
-)
+import "simba/newraft"
 
 type Runner interface {
 	Start()
@@ -11,7 +8,7 @@ type Runner interface {
 }
 
 type TransportAdapter interface {
-	SendMessage([]raft.Message)
+	SendMessage([]newraft.Message)
 }
 
 type TimeAdapter interface {
