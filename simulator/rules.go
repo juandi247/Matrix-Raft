@@ -32,6 +32,8 @@ func checkSplitBrain(nodeList []*newraft.Node){
 }
 
 
+//aca chekear las comited entries, del ultimo leader, con las del resto de logs. tomando cada log de cada server follower
+//tomamos ese valor y las entradas hasta ahi, deben ser igual que las del lider, el lider edberia tener el commitIndex siempre mayor o igual al del log dec ada follower
 func checkCommitedEntries(nodeList []*newraft.Node){
 	
 

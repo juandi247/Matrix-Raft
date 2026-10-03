@@ -1,27 +1,25 @@
 package simulator
 
 import (
+	"container/heap"
 	"fmt"
 	"simba/adapters"
 	"simba/newraft"
+	"simba/sse"
 )
 
 type SimNetwork struct {
 	messageQueue *PriorityQueue
 	FuzzyConfig  FuzzyConfig
 	TimeAdapter  adapters.TimeAdapter
-}
-
-type SimMessage struct {
-	index int
-	id int
-	DeliveryTick int
-	Message      newraft.Message
+	IdCounter int //id counter for the messages to be deliverd
 }
 
 
+func (s *SimNetwork) SendMessage(messages []newraft.Message, eventChan chan sse.SseEvent) {
 
-func (s *SimNetwork) SendMessage(messages []newraft.Message) {
+	events:= []sse.SimMessage{}
+
 	fmt.Printf("we are going to put in the queue %v messages \n\n", len(messages))
 	for _, message := range messages {
 		var delayTicks int64
@@ -31,16 +29,26 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 
 		fmt.Println("ReceiverID: ", message.ReceiverId, "deliveryTick: ", s.TimeAdapter.Now()+delayTicks)
 		//TODO: there should be a tracker or something for the later UI that indicates that a message was LOST
+
+
+		s.IdCounter++
 		if !lost {
-			simMessage := &SimMessage{
+			simMessage := &sse.SimMessage{
+				Id: s.IdCounter,
 				DeliveryTick: int(s.TimeAdapter.Now() + delayTicks),
 				Message:      message,
 			}
-			s.messageQueue.Push(simMessage)
+			heap.Push(s.messageQueue, simMessage)
+			//this events is just for the SSE
+			events=append(events, *simMessage)
 		}
 		
 	}
 
+
+	if len(events)!=0{
+	eventChan <- sse.NewSimulationMessagesPushed(events)
+	}
 	s.printQueueData()
 }
 
@@ -64,9 +72,11 @@ func (s *SimNetwork) printQueueData(){
 }
 
 func (s *SimNetwork) SendTimeout(msg newraft.Message){
-	simMessage:= &SimMessage{
+	s.IdCounter++
+	simMessage:= &sse.SimMessage{
 		DeliveryTick: int(s.TimeAdapter.Now()) - 1,
 		Message: msg,
+		
 	}
 	s.messageQueue.Push(simMessage)
 }
@@ -74,10 +84,10 @@ func (s *SimNetwork) SendTimeout(msg newraft.Message){
 
 
 
-type PriorityQueue []*SimMessage
+type PriorityQueue []*sse.SimMessage
 
 
-func (pq *PriorityQueue) Peek() *SimMessage {
+func (pq *PriorityQueue) Peek() *sse.SimMessage {
 	if pq.Len() == 0 {
 		return nil
 	}
@@ -88,21 +98,21 @@ func (pq PriorityQueue) Len() int { return len(pq) }
 
 func (pq PriorityQueue) Less(i, j int) bool {
 	if pq[i].DeliveryTick == pq[j].DeliveryTick {
-		return pq[i].index < pq[j].index
+		return pq[i].Index < pq[j].Index
 	}
 	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
 	return pq[i].DeliveryTick < pq[j].DeliveryTick
 }
 func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].index = i
-	pq[j].index = j
+	pq[i].Index = i
+	pq[j].Index = j
 }
 
 func (pq *PriorityQueue) Push(x any) {
 	n := len(*pq)
-	item := x.(*SimMessage)
-	item.index = n
+	item := x.(*sse.SimMessage)
+	item.Index = n
 	*pq = append(*pq, item)
 }
 
@@ -111,11 +121,11 @@ func (pq *PriorityQueue) Pop() any {
 	n := len(old)
 	item := old[n-1]
 	old[n-1] = nil  // don't stop the GC from reclaiming the item eventually
-	item.index = -1 // for safety
+	item.Index = -1 // for safety
 	*pq = old[0 : n-1]
 	return item
 }
 
 // update modifies the priority and value of an Item in the queue.
-func (pq *PriorityQueue) update(item *SimMessage, value string, priority int) {
+func (pq *PriorityQueue) update(item *sse.SimMessage, value string, priority int) {
 }

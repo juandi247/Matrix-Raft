@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"simba/newraft"
+	"simba/sse"
 	"strconv"
 	"time"
 )
@@ -17,10 +18,11 @@ type SimulationRunner struct {
 	LeaderId 	int
 }
 
-func (s *SimulationRunner) Start(eventChan chan int) {
+func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
 
 	// Config for the simulated Time struct
 	s.Time.Tick = 0
+	s.Network.IdCounter = 0	
 
 	// Config for the simulated Network struct
 	s.Network.TimeAdapter = s.Time
@@ -34,6 +36,9 @@ func (s *SimulationRunner) Start(eventChan chan int) {
 	//This is all intiial configuration preivous to the FOR loop that ocntains the running engine steps
 	nodeList := initializeNodes(s.FuzzyProbabilities)
 
+	for _ , node := range nodeList{
+		eventChan <-sse.NewNodeStateUpdateEvent(node)
+	}
 
 	//requests:= GenerateRequests(s.FuzzyProbabilities.rand)
 
@@ -42,16 +47,21 @@ func (s *SimulationRunner) Start(eventChan chan int) {
 	for s.Time.Now() <= maxTicks {
 		// advance 1 tick
 		s.Time.Advance(TickFrequency)
-		currTick:= int(s.Time.Now())
-		fmt.Println("hola antes de mandar el tick")
-		eventChan <- currTick
+		eventChan <- sse.NewTickAdvanceEvent(int(s.Time.Now()))
 
 
 		fmt.Printf("Starting tick:  %v \n", s.Time.Now())
+		if  s.Network.messageQueue.Peek()!=nil{
+		fmt.Printf("PEEK MESSAGE - DeliveryTick: %d, Receiver: %s, MessageType: %d \n", 
+			s.Network.messageQueue.Peek().DeliveryTick,
+			s.Network.messageQueue.Peek().Message.ReceiverId,
+			s.Network.messageQueue.Peek().Message.Type,
+			)
 
+		}
 		//crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
 
-		updateNodeTimers(nodeList)
+		updateNodeTimers(nodeList, eventChan)
 
 		//handleComeBackToLiveNode(nodeList, s.Time.Now())
 
@@ -59,10 +69,10 @@ func (s *SimulationRunner) Start(eventChan chan int) {
 
 		//this is ONLY to read the queue and put the messages into the inbox. No logic of delivering messages to any node here.
 		if s.Network.messageQueue.Len() > 0 {
-			readMessagesToInbox(s.Network, nodeList)
+			readMessagesToInbox(s.Network, nodeList, eventChan)
 		}
 
-		time.Sleep(800* time.Millisecond)
+		time.Sleep(1000* time.Millisecond)
 
 
 		
@@ -142,13 +152,14 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 
 			//TODO: Simulator fields, que son importantes solo para los ticks de reducir los teimotus nada mas
 			
-			SimulatorFields: newraft.SimulatorFields{
+			SimulatorFields: &newraft.SimulatorFields{
 				HeartbeatTimeoutCounter: heartbeatTimeout,
 				ElectionTimeoutCounter: ElectionTimeout,
 				SendAppendEntriesTimeoutCounter: SendAppendEntriesFreq,
 				Alive: true,
 			},
 		}
+
 	}
 
 	return nodeList
@@ -171,11 +182,13 @@ func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, current
 }
  
 
-func updateNodeTimers(nodeList []*newraft.Node) {
+func updateNodeTimers(nodeList []*newraft.Node, eventChan chan sse.SseEvent) {
 	for _, node := range nodeList {
 		switch node.CurrentRole {
 		case newraft.FOLLOWER:
 			node.SimulatorFields.HeartbeatTimeoutCounter--
+			eventChan <- sse.NewHeartbeatTimeoutEvent(node.Id, node.SimulatorFields.HeartbeatTimeoutCounter)
+			
 		case newraft.CANDIDATE:
 			node.SimulatorFields.ElectionTimeoutCounter--
 		case newraft.LEADER:
@@ -201,7 +214,7 @@ func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64) {
 	}
 }*/
 
-func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node) {
+func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan chan sse.SseEvent) {
 
 	if sn.messageQueue.Len()<=0{
 		panic("wtf this hsuold be bigger than cero")
@@ -209,11 +222,18 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node) {
 
 	for i:=0; i<sn.messageQueue.Len(); i++{
 		msg:= sn.messageQueue.Peek()
+		
+		fmt.Println("MENSAGE QUE SE VA A LEER: ", msg.Message.Type)
+		fmt.Println("con delivery tick: ", msg.DeliveryTick)
+		fmt.Println("Receiver: ", msg.Message.ReceiverId)
+		fmt.Println(" --- ")
 		if msg.DeliveryTick > int(sn.TimeAdapter.Now()) {
 			return
 		}
 		//ESTE POP Es lo que me jode no?
-		msg = heap.Pop(sn.messageQueue).(*SimMessage)
+		//msg = heap.Pop(sn.messageQueue).(*sse.SimMessage)
+		heap.Pop(sn.messageQueue)
+
 /*
 		if _, isEntry := msg.Message.(raft.NewEntry); isEntry{
 			 //leaderId:= checkLeader(nodeList)
@@ -238,17 +258,19 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node) {
 		}
 
 		
-
 		 for _ , node:=range nodeList{
 			if node.Id == receiverNodeId{
 				fmt.Printf("%v VA a hacer HANLDE EVENT \n de mensaje desde: %v con deliveryTick: %v\n", node.Id, msg.Message.SenderId, msg.DeliveryTick)
+				eventChan <- sse.NewSimulationMessageDelivered(msg.Id)
 				responseMessages:=node.HandleEvent(msg.Message)
 				if len(responseMessages)==0{
 					fmt.Println("resopnse messages fue CERO")
 				}
+				eventChan <- sse.NewNodeStateUpdateEvent(node)
 
 				fmt.Printf("Desde: %v respondimos con:  %v mensajes \n", node.Id, len(responseMessages))
-				sn.SendMessage(responseMessages)
+				sn.SendMessage(responseMessages, eventChan)
+				break
 			}
 		}
 		

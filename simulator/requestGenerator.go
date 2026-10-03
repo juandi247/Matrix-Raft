@@ -3,6 +3,7 @@ package simulator
 import (
 	"math/rand"
 	"simba/newraft"
+	"simba/sse"
 )
 
 
@@ -11,13 +12,13 @@ const maxEntryLength = 10
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
-func GenerateRequests(rng *rand.Rand) []SimMessage {
+func GenerateRequests(rng *rand.Rand) []sse.SimMessage {
 
-	arr:= make([]SimMessage, numberOfRequests)
+	arr:= make([]sse.SimMessage, numberOfRequests)
 
 	for i:=range 1000{
-	arr[i] = SimMessage{
-			id: i,
+	arr[i] = sse.SimMessage{
+			Id: i,
 			DeliveryTick: 10 + rng.Intn(maxTicks-10 +1) ,
 			Message: newraft.Message{
 				Type: newraft.MsgNewEntry,
