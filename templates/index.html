@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simba – Raft with deterministic simulation testing</title>
+<meta name="description" content="Simba is a custom implementation of Raft, tested with deterministic simulation testing.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ==========================================================
+   THEME TOKENS – change these to restyle the whole page
+   ========================================================== */
+:root {
+  /* color (dark by default) */
+  --color-bg: #0b0d10;
+  --color-surface: #12151a;
+  --color-text: #e7e9ee;
+  --color-muted: #8b93a2;
+  --color-border: #2a303a;
+  --color-accent: #8093ff;
+  --color-accent-text: #0b0d10;
+  --color-candidate: #f0b45a;
+  --color-code-bg: #08090c;
+  --color-code-text: #cfd4de;
+  --color-code-dim: #667082;
+
+  /* type */
+  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-sm: 0.875rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --text-hero: clamp(2rem, 4.2vw, 3rem);
+  --leading: 1.6;
+
+  /* layout */
+  --width: 64rem;
+  --width-text: 42rem;
+  --photo-size: 4.5rem;
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 3rem;
+  --space-5: 5rem;
+  --radius: 4px;
+  --border: 1px solid var(--color-border);
+}
+
+/* Optional light theme: <html data-theme="light"> */
+:root[data-theme="light"] {
+  --color-bg: #f7f8fa; --color-surface: #ffffff; --color-text: #171a22;
+  --color-muted: #5d6472; --color-border: #d5d9e0; --color-accent: #2b4bff;
+  --color-accent-text: #ffffff; --color-code-bg: #171a22;
+}
+
+/* ==========================================================
+   BASE
+   ========================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font: 400 var(--text-base)/var(--leading) var(--font-body); -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { line-height: 1.15; margin: 0; letter-spacing: -0.02em; }
+p { margin: 0; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+
+/* ==========================================================
+   COMPONENTS
+   ========================================================== */
+.container { width: 100%; max-width: var(--width); margin: 0 auto; padding: 0 var(--space-3); }
+.section { padding: var(--space-5) 0; border-top: var(--border); }
+.stack > * + * { margin-top: var(--space-2); }
+.stack-lg > * + * { margin-top: var(--space-3); }
+.muted { color: var(--color-muted); }
+
+.title-hero { font-size: var(--text-hero); font-weight: 700; letter-spacing: -0.03em; }
+.title-section { font-size: var(--text-xl); font-weight: 600; }
+.title-item { font-size: var(--text-lg); font-weight: 600; }
+.lead { font-size: var(--text-lg); color: var(--color-muted); }
+
+.nav { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; }
+.nav__brand { font: 600 var(--text-base)/1 var(--font-mono); text-decoration: none; }
+.nav__links { display: flex; gap: var(--space-3); align-items: center; font-size: var(--text-sm); }
+.nav__links a { color: var(--color-muted); text-decoration: none; }
+.nav__links a:hover { color: var(--color-text); }
+
+.button { display: inline-block; padding: 0.75rem 1.25rem; background: var(--color-accent); color: var(--color-accent-text); font: 600 var(--text-base)/1 var(--font-body); text-decoration: none; border-radius: var(--radius); transition: opacity 0.15s; }
+.button:hover { opacity: 0.85; }
+.button--small { padding: 0.5rem 0.9rem; font-size: var(--text-sm); }
+.nav__links a.button { color: var(--color-accent-text); }
+
+.photo { display: block; width: var(--photo-size); height: var(--photo-size); object-fit: cover; border-radius: var(--radius); border: var(--border); background: var(--color-surface); }
+.hero { padding: var(--space-5) 0; max-width: 46rem; }
+
+.rows > div { display: grid; grid-template-columns: 14rem 1fr; gap: var(--space-3); padding: var(--space-2) 0; border-top: var(--border); }
+.rows dt { font: 500 var(--text-base)/1.6 var(--font-mono); }
+.rows dd { margin: 0; color: var(--color-muted); max-width: 42rem; }
+
+.split { display: grid; grid-template-columns: 1fr 1.1fr; gap: var(--space-4); align-items: center; }
+.split + .split { margin-top: var(--space-4); }
+
+/* figures (diagrams) */
+.figure { margin: 0; background: var(--color-surface); border: var(--border); border-radius: var(--radius); padding: var(--space-2); }
+.figure svg { display: block; width: 100%; height: auto; }
+.figure figcaption { margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-muted); }
+.svg-box { fill: var(--color-bg); stroke: var(--color-border); stroke-width: 1.5; }
+.svg-box.accent, .svg-box.commit { stroke: var(--color-accent); }
+.svg-box.candidate { stroke: var(--color-candidate); }
+.svg-box.pending { stroke-dasharray: 4 3; stroke: var(--color-muted); }
+.svg-line { fill: none; stroke: var(--color-muted); stroke-width: 1.5; }
+.svg-arrow { fill: var(--color-muted); }
+.svg-mono { fill: var(--color-text); font: 500 13px var(--font-mono); }
+.svg-small { font: 400 12px var(--font-mono); }
+.svg-label { fill: var(--color-muted); font: 400 12px var(--font-body); }
+.muted-fill { fill: var(--color-muted); }
+
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.steps li { padding-left: var(--space-3); border-left: 2px solid var(--color-border); }
+.steps strong { display: block; }
+
+.code { background: var(--color-code-bg); color: var(--color-code-text); border: var(--border); font: 400 var(--text-sm)/1.8 var(--font-mono); border-radius: var(--radius); padding: var(--space-2) var(--space-3); overflow-x: auto; white-space: pre; }
+.code .dim { color: var(--color-code-dim); }
+.code .hl { color: var(--color-accent); }
+.code .warn { color: var(--color-candidate); }
+
+.footer { border-top: var(--border); padding: var(--space-4) 0; font-size: var(--text-sm); color: var(--color-muted); }
+
+@media (max-width: 860px) {
+  .split { grid-template-columns: 1fr; }
+  .rows > div { grid-template-columns: 1fr; gap: 0; }
+  .section { padding: var(--space-4) 0; }
+  .hero { padding: var(--space-4) 0; }
+  .nav__links a:not(.button) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+</style>
+</head>
+
+<body>
+
+<header class="container nav">
+  <a class="nav__brand" href="/">simba</a>
+  <nav class="nav__links" aria-label="Main">
+    <a href="#overview">Overview</a>
+    <a href="#raft">Raft</a>
+    <a href="#how">How it works</a>
+    <a class="button button--small" href="/simulation">Start simulation</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="container hero stack-lg">
+    <!-- Put your cat photo next to this file as simba.jpg -->
+    <img class="photo" src="simba.jpg" alt="Simba, a cat" width="240" height="240">
+    <h1 class="title-hero">Simba is a custom implementation of Raft, tested with deterministic simulation.</h1>
+    <p class="lead">A personal project. Raft runs inside a deterministic simulator, so every bug can be replayed exactly.</p>
+    <p><a class="button" href="/simulation">Start simulation</a></p>
+  </section>
+
+  <section class="section" id="overview">
+    <div class="container stack-lg">
+      <h2 class="title-section">Overview</h2>
+      <dl class="rows" style="margin: 0;">
+        <div><dt>Raft</dt><dd>A consensus algorithm that lets a group of nodes agree on a shared log, even when some nodes crash or messages are delayed. Simba implements it from scratch.</dd></div>
+        <div><dt>Deterministic simulation testing</dt><dd>The whole system runs inside a simulation where the clock, the network and the failures are all controlled. The same run always gives the same result, so any failure can be replayed exactly.</dd></div>
+        <div><dt>Matrix mode</dt><dd>The deterministic simulation. The engine controls time, message delivery and crashes.</dd></div>
+        <div><dt>Real mode</dt><dd>The same Raft with real timeouts, persistent storage and messages sent over the network. Only the interfaces change.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section" id="raft">
+    <div class="container">
+      <h2 class="title-section" style="margin-bottom: var(--space-4);">Raft in short</h2>
+
+      <div class="split">
+        <div class="stack">
+          <h3 class="title-item">Leader election</h3>
+          <p class="muted">Every node is a follower, a candidate or the leader. A follower that stops hearing from the leader becomes a candidate and asks the others for votes. If it gets a majority, it becomes the leader.</p>
+          <p class="muted">Each election starts a new term. A node that sees a higher term steps down.</p>
+        </div>
+        <figure class="figure">
+          <svg viewBox="0 0 420 250" role="img" aria-label="Node states: follower, candidate, leader">
+            <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="svg-arrow" d="M0 0L10 5L0 10z"/></marker></defs>
+            <path class="svg-line" marker-end="url(#arr)" d="M97 130 L178 72"/>
+            <path class="svg-line" marker-end="url(#arr)" d="M242 72 L323 130"/>
+            <path class="svg-line" marker-end="url(#arr)" d="M340 182 Q210 252 80 182"/>
+            <circle class="svg-box" cx="70" cy="150" r="34"/><text class="svg-mono" x="70" y="154" text-anchor="middle">follower</text>
+            <circle class="svg-box candidate" cx="210" cy="50" r="34"/><text class="svg-mono" x="210" y="54" text-anchor="middle">candidate</text>
+            <circle class="svg-box accent" cx="350" cy="150" r="34"/><text class="svg-mono" x="350" y="154" text-anchor="middle">leader</text>
+            <text class="svg-label" x="118" y="82" text-anchor="end">election timeout</text>
+            <text class="svg-label" x="302" y="82">majority of votes</text>
+            <text class="svg-label" x="210" y="240" text-anchor="middle">sees a higher term</text>
+          </svg>
+          <figcaption>The three roles and how a node moves between them.</figcaption>
+        </figure>
+      </div>
+
+      <div class="split">
+        <div class="stack">
+          <h3 class="title-item">Log replication</h3>
+          <p class="muted">Commands go to the leader, which appends them to its log and sends them to the followers. An entry is committed once a majority of nodes has stored it.</p>
+          <p class="muted">Committed entries never change, and every node applies them in the same order.</p>
+        </div>
+        <figure class="figure">
+          <svg viewBox="0 0 340 225" role="img" aria-label="Logs of five nodes, with committed and uncommitted entries">
+            <text class="svg-mono muted-fill" x="102" y="16" text-anchor="middle">1</text>
+<text class="svg-mono muted-fill" x="152" y="16" text-anchor="middle">2</text>
+<text class="svg-mono muted-fill" x="202" y="16" text-anchor="middle">3</text>
+<text class="svg-mono muted-fill" x="252" y="16" text-anchor="middle">4</text>
+<text class="svg-mono muted-fill" x="302" y="16" text-anchor="middle">5</text>
+<text class="svg-mono" x="0" y="49">n1</text>
+<text class="svg-small muted-fill" x="30" y="49">leader</text>
+<rect class="svg-box commit" x="80" y="30" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="102" y="49" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="130" y="30" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="152" y="49" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="180" y="30" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="202" y="49" text-anchor="middle">t2</text>
+<rect class="svg-box commit" x="230" y="30" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="252" y="49" text-anchor="middle">t2</text>
+<rect class="svg-box pending" x="280" y="30" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="302" y="49" text-anchor="middle">t2</text>
+<text class="svg-mono" x="0" y="87">n2</text>
+<rect class="svg-box commit" x="80" y="68" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="102" y="87" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="130" y="68" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="152" y="87" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="180" y="68" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="202" y="87" text-anchor="middle">t2</text>
+<rect class="svg-box commit" x="230" y="68" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="252" y="87" text-anchor="middle">t2</text>
+<rect class="svg-box pending" x="280" y="68" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="302" y="87" text-anchor="middle">t2</text>
+<text class="svg-mono" x="0" y="125">n3</text>
+<rect class="svg-box commit" x="80" y="106" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="102" y="125" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="130" y="106" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="152" y="125" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="180" y="106" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="202" y="125" text-anchor="middle">t2</text>
+<rect class="svg-box commit" x="230" y="106" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="252" y="125" text-anchor="middle">t2</text>
+<text class="svg-mono" x="0" y="163">n4</text>
+<rect class="svg-box commit" x="80" y="144" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="102" y="163" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="130" y="144" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="152" y="163" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="180" y="144" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="202" y="163" text-anchor="middle">t2</text>
+<text class="svg-mono" x="0" y="201">n5</text>
+<rect class="svg-box commit" x="80" y="182" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="102" y="201" text-anchor="middle">t1</text>
+<rect class="svg-box commit" x="130" y="182" width="44" height="28" rx="3"/>
+<text class="svg-mono" x="152" y="201" text-anchor="middle">t1</text>
+          </svg>
+          <figcaption>Each box is a log entry and its term. Solid entries are committed. Dashed entries are not yet on a majority.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="container">
+      <h2 class="title-section" style="margin-bottom: var(--space-4);">How Simba runs Raft</h2>
+
+      <div class="split">
+        <div class="stack">
+          <h3 class="title-item">One Raft, two modes</h3>
+          <p class="muted">Raft never touches time, storage or the network directly. It talks to three interfaces. Matrix mode plugs in simulated versions, and Real mode plugs in the real ones.</p>
+        </div>
+        <figure class="figure">
+          <svg viewBox="0 0 480 262" role="img" aria-label="Raft core using time, storage and network interfaces, with Matrix and Real implementations">
+            <rect class="svg-box accent" x="150" y="8" width="180" height="48" rx="4"/><text class="svg-mono" x="240" y="37" text-anchor="middle">Raft event loop</text>
+            <path class="svg-line" d="M240 56 L147 98 M240 56 L282 98 M240 56 L417 98"/>
+            <rect class="svg-box" x="90" y="98" width="115" height="36" rx="4"/><text class="svg-mono" x="147" y="121" text-anchor="middle">Time</text>
+            <rect class="svg-box" x="225" y="98" width="115" height="36" rx="4"/><text class="svg-mono" x="282" y="121" text-anchor="middle">Storage</text>
+            <rect class="svg-box" x="360" y="98" width="115" height="36" rx="4"/><text class="svg-mono" x="417" y="121" text-anchor="middle">Network</text>
+            <path class="svg-line" d="M147 134 V164 M282 134 V164 M417 134 V164 M147 196 V210 M282 196 V210 M417 196 V210"/>
+            <text class="svg-mono" x="0" y="185">Matrix</text>
+            <rect class="svg-box" x="90" y="164" width="115" height="32" rx="4"/><text class="svg-small" x="147" y="184" text-anchor="middle" fill="currentColor" style="fill:var(--color-text)">ticks</text>
+            <rect class="svg-box" x="225" y="164" width="115" height="32" rx="4"/><text class="svg-small" x="282" y="184" text-anchor="middle" style="fill:var(--color-text)">in memory</text>
+            <rect class="svg-box" x="360" y="164" width="115" height="32" rx="4"/><text class="svg-small" x="417" y="184" text-anchor="middle" style="fill:var(--color-text)">event log</text>
+            <text class="svg-mono" x="0" y="233">Real</text>
+            <rect class="svg-box" x="90" y="210" width="115" height="32" rx="4"/><text class="svg-small" x="147" y="230" text-anchor="middle" style="fill:var(--color-text)">system clock</text>
+            <rect class="svg-box" x="225" y="210" width="115" height="32" rx="4"/><text class="svg-small" x="282" y="230" text-anchor="middle" style="fill:var(--color-text)">disk</text>
+            <rect class="svg-box" x="360" y="210" width="115" height="32" rx="4"/><text class="svg-small" x="417" y="230" text-anchor="middle" style="fill:var(--color-text)">sockets</text>
+          </svg>
+          <figcaption>The same Raft code runs on top of either set of implementations.</figcaption>
+        </figure>
+      </div>
+
+      <div class="split">
+        <div class="stack">
+          <h3 class="title-item">Matrix mode, step by step</h3>
+          <ol class="steps">
+            <li><strong>Time is a counter.</strong><span class="muted">The engine is a loop that advances time in ticks: plain, monotonic integers.</span></li>
+            <li><strong>Messages are fire and forget.</strong><span class="muted">Nodes never call each other. Every message goes into the event log.</span></li>
+            <li><strong>Every event has a delivery tick.</strong><span class="muted">Each entry stores its type, sender, receiver and the tick when it arrives. A later tick simulates network latency.</span></li>
+            <li><strong>Nodes reply in the future.</strong><span class="muted">When the tick arrives, the node handles the message and schedules its reply at a future tick.</span></li>
+            <li><strong>Failures are events too.</strong><span class="muted">Crashes and restarts go through the same log, so they replay like everything else.</span></li>
+          </ol>
+        </div>
+        <div class="stack">
+          <div class="code"><span class="dim">tick  event          from → to   delivers</span>
+12    <span class="warn">RequestVote</span>    n1 → n2     @ 14
+12    <span class="warn">RequestVote</span>    n1 → n3     @ 15
+14    <span class="hl">VoteGranted</span>    n2 → n1     @ 17
+15    <span class="hl">VoteGranted</span>    n3 → n1     @ 16
+16    <span class="hl">AppendEntries</span>  n1 → n2     @ 19
+20    NodeCrash      n3          @ 20</div>
+          <p class="muted" style="font-size: var(--text-sm);">An example of what the event log looks like.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">Simba, a personal project on deterministic simulation testing and Raft.</div>
+</footer>
+
+</body>
+</html>
