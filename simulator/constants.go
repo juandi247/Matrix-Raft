@@ -6,7 +6,7 @@ const maxTicks = 1000
 const maxQueueSize = 100000
 const maxInboxSize = 10000
 
-const SendAppendEntriesFreq = 10
+const SendAppendEntriesFreq = 20
 const ElectionTimeout = 100
 const MinHeartBeatTimeout = 75
 const MaxHeartBeatTimeout = 150
