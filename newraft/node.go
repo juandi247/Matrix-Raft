@@ -52,7 +52,7 @@ type Node struct {
 
 
 
-	SimulatorFields SimulatorFields
+	SimulatorFields *SimulatorFields
 }
 
 
@@ -95,9 +95,8 @@ func (n *Node) updateTerm(newTerm int) {
 
 func (n *Node) HandleEvent(message Message) []Message {
 
-	n.printEventInformation(message.Type)
-	//Ignore the message, we can also send back to him, to update the term, but for now nah
-	if message.Term < n.CurrTerm {
+	//Ignore the message, we can also send back to him, to update the term, This will also check that is not a timeout message (needed because timeouts send term also)
+	if message.Term < n.CurrTerm && !isTimeoutMessage(message.Type){
 		fmt.Println("mensaje ignorado por TERM")
 		return nil
 	}
@@ -124,6 +123,14 @@ func (n *Node) HandleEvent(message Message) []Message {
 		panic("Not valid role wtf")
 
 	}
+}
+
+func isTimeoutMessage(msgType MessageType) bool {
+	if msgType == MsgSendAppendEntriesTimeout || msgType == MsgHeartbeatTimeout || msgType== MsgElectionTimeout{
+		return true
+	}
+	return false
+
 }
 
 func (n *Node) transitionRole(target Role) []Message {

@@ -32,6 +32,12 @@ func (n *Node)HandleFollowerAction(mesage Message) []Message{
 
 func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 
+	//this is a trick just for the simulated stuff
+	if n.SimulatorFields!=nil{
+		n.SimulatorFields.HeartbeatTimeoutCounter = n.HeartbeatTimeout
+	}
+	//TODO: aca deberia reiniciar el timer o ticket de timeout, o algo (incluso podria ir en el mensaje de reiniciar para fire and forger)
+
 	messages:= []Message{}
 	responseMessage:= Message{
 		SenderId: n.Id,
@@ -67,6 +73,8 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 
 	//HAPPY PATH
 	responseEvent.Succes = true
+	//TODO: Aca puede ser que alguna entrada este mal, por lo tanto debo chcekear que no solamente appendee las cosas y ya. 
+	//aca si se appendea todo, peude ser que si habia una entrada mal, se appendea la snuevas y la que etaba mal se quedo ahi OJO
 	n.Log = append(n.Log, requestEvent.Entries...)
 	//TODO: SAVE IN STORAGE porque debe estar ya appendeado
 
