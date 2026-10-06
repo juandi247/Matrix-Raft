@@ -19,6 +19,7 @@ const Quorum = TotalNodes/2 + 1
 type Entry struct {
 	Term  int
 	Value string
+	Index int
 }
 
 type Node struct {
@@ -107,7 +108,6 @@ func (n *Node) HandleEvent(message Message) []Message {
 		n.transitionRole(FOLLOWER)
 	}
 
-	fmt.Println("\n", n.Id, " SOY ROL: ", n.CurrentRole)
 	switch n.CurrentRole {
 
 	case FOLLOWER:
@@ -126,7 +126,7 @@ func (n *Node) HandleEvent(message Message) []Message {
 }
 
 func isTimeoutMessage(msgType MessageType) bool {
-	if msgType == MsgSendAppendEntriesTimeout || msgType == MsgHeartbeatTimeout || msgType== MsgElectionTimeout{
+	if msgType == MsgSendAppendEntriesTimeout || msgType == MsgHeartbeatTimeout || msgType== MsgElectionTimeout || msgType == MsgNewEntry{
 		return true
 	}
 	return false
@@ -163,6 +163,7 @@ func (n *Node) transitionRole(target Role) []Message {
 
 		n.initializeLeaderIndexes()
 		n.CurrentRole = LEADER
+		n.CurrentLeader = n.Id
 		return n.SendAppendEntries()
 		
 

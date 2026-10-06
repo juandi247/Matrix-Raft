@@ -14,6 +14,8 @@ const(
 	MsgElectionTimeout 
 	MsgHeartbeatTimeout
 	MsgSendAppendEntriesTimeout
+
+	MsgLeaderCheck
 )
 
 
@@ -38,6 +40,11 @@ type FrontEndEntry struct{
 	Entry string
 }
 
+/*es lo que responderia un nodo, si recibe una entry y no es el lider, para indicarle al cliente que ese es el lider al que le debe enviar las cosas */
+type LeaderCheck struct{
+	LeaderId string
+	//Entry string
+}
 /*-------------APPEND ENTRIES RPCS ------------------ */
 type AppendEntriesEvent struct{
 	Term int
@@ -82,3 +89,4 @@ func (a AppendEntriesResponseEvent) isEventPayload(){}
 func (a RequestVoteEvent) isEventPayload(){}
 func (a RequestVoteResponseEvent) isEventPayload(){}
 func (a TimeoutEvent) isEventPayload(){}
+func (a LeaderCheck) isEventPayload(){}

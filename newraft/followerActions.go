@@ -23,7 +23,19 @@ func (n *Node)HandleFollowerAction(mesage Message) []Message{
 
 	case MsgHeartbeatTimeout: 
 		return n.handleHeartbeatTimeout()
+
+	case MsgNewEntry: 
+		return []Message{
+			{
+				SenderId: n.Id,
+				ReceiverId: "CLIENT",
+				Term: n.CurrTerm,
+				Type: MsgLeaderCheck,
+				Payload: 	LeaderCheck{LeaderId: n.CurrentLeader}},
+			
+		}
 	}
+
 
 
 	return nil
@@ -37,6 +49,7 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 		n.SimulatorFields.HeartbeatTimeoutCounter = n.HeartbeatTimeout
 	}
 	//TODO: aca deberia reiniciar el timer o ticket de timeout, o algo (incluso podria ir en el mensaje de reiniciar para fire and forger)
+	n.CurrentLeader = requestEvent.LeaderId
 
 	messages:= []Message{}
 	responseMessage:= Message{
@@ -52,20 +65,34 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 		Succes: false,
 	}
 
+	if n.Id== "Node5"{
+	fmt.Printf("Append entries del lider: \n")
+	fmt.Printf(" PrevLogIndex: %v \n", requestEvent.PrevLogIndex)
+	fmt.Printf(" PrevLogTerm: %v \n", requestEvent.PrevLogTerm)
+	fmt.Printf(" CommitIndex: %v \n", requestEvent.LeaderCommitIndex)
+
+	if len(requestEvent.Entries)>0{
+		fmt.Printf(" Entries: %v \n", requestEvent.Entries[:])
+		}
+	}
 
 	followerLastIndex:= len(n.Log) - 1 
 
 	//if log does not contain an entry on the prevLogIndex, automatic error, this makes sure we have something in the same index  
 	if requestEvent.PrevLogIndex > followerLastIndex{
 		responseMessage.Payload = responseEvent
+		fmt.Println("FOLLOWER: El lgo no cotneiene la prevLogIndex, por lo tanto retornamos false, prevLog: ", requestEvent.PrevLogIndex, " lastIndexfollower: ", followerLastIndex)
 		return append(messages, responseMessage)
 
 	}
 
 	
 	//if the Term does not match, we have a problem
-	if requestEvent.PrevLogTerm != n.Log[followerLastIndex].Term{
+	if requestEvent.PrevLogTerm != n.Log[requestEvent.PrevLogIndex].Term{
 		responseMessage.Payload = responseEvent
+		fmt.Println("el index request es: ", requestEvent.PrevLogIndex)
+		fmt.Println("el index de follower: ", followerLastIndex)
+		fmt.Println("FOLLOWER: El log no matchea term, por lo tanto retornamos false, prevLogTERM: ", requestEvent.PrevLogTerm, " lastIndexfolloweTERMr: ", n.Log[followerLastIndex].Term)
 		return append(messages, responseMessage)
 
 	}
@@ -73,22 +100,33 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 
 	//HAPPY PATH
 	responseEvent.Succes = true
-	//TODO: Aca puede ser que alguna entrada este mal, por lo tanto debo chcekear que no solamente appendee las cosas y ya. 
-	//aca si se appendea todo, peude ser que si habia una entrada mal, se appendea la snuevas y la que etaba mal se quedo ahi OJO
-	n.Log = append(n.Log, requestEvent.Entries...)
+
+	for index, entry:= range requestEvent.Entries{
+		if entry.Index > len(n.Log) - 1{
+			n.Log = append(n.Log, requestEvent.Entries[index:]...)
+			break
+		}
+	}
 	//TODO: SAVE IN STORAGE porque debe estar ya appendeado
 
+
+
+	responseEvent.MatchIndex = len(n.Log)-1
+
 	if requestEvent.LeaderCommitIndex > n.CommitIndex{
-	/* TODO: check this porque no lo entendi ien
-	If leaderCommit > commitIndex, set commitIndex =
-	min(leaderCommit, index of last new entry)
-	*/
-		/* aca tambien deberia ir esto If commitIndex > lastApplied: increment lastApplied, apply
+		n.CommitIndex = min(requestEvent.LeaderCommitIndex, len(n.Log) -1)
+		/*TODO:  aca tambien deberia ir esto If commitIndex > lastApplied: increment lastApplied, apply
 log[lastApplied] to state machine (§5.3), que signficaria que deberiamos hacer o aplciar los datos a la state machine*/
 	}
 
 
 	responseMessage.Payload = responseEvent
+
+	if n.Id=="Node5"{
+	fmt.Println("\n Rspusta SUCCES")
+	fmt.Printf(" FollowerCommitIndex: %v\n", n.CommitIndex)
+	fmt.Printf(" MatchIndex: %v\n", responseEvent.MatchIndex)
+}
 	return append(messages, responseMessage)
 
 }
@@ -162,4 +200,22 @@ func (n *Node) handleHeartbeatTimeout()[]Message{
 }
 
 
+
+func (n *Node) checkEntryExists(index int) bool{
+
+	if index > len(n.Log) - 1{
+		return false
+	}
+
+	return true
+}
+
+func (n *Node) checkEntryTerm(index int) bool{
+
+	if index > len(n.Log) - 1{
+		return false
+	}
+
+	return true
+}
 

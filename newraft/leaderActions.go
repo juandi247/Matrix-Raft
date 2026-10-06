@@ -1,7 +1,6 @@
-package newraft 
+package newraft
 
-
-
+import "fmt"
 
 /* ---- METHODS REACTING TO INCOMING EVENTS -------- */
 func (n *Node)HandleLeaderAction(mesage Message) []Message{
@@ -36,24 +35,36 @@ func (n *Node) HandleNewEntry(data string)[]Message{
 	
 	//he should report to the other side, here is he leader
 	case FOLLOWER: 
+	panic("esto no ebderia ocurr")
 	//he should tell them, hey for security resons we are not ready, we are on an election, safety first
 	case CANDIDATE: 
+	panic("esto no ebderia ocurr tampoco")
 
 	case LEADER:
-		n.Log = append(n.Log, Entry{ Term: n.CurrTerm, Value: data})
-		return n.SendAppendEntries()
+		idx:= len(n.Log)
+		n.Log = append(n.Log, Entry{ Term: n.CurrTerm, Value: data, Index: idx})
+
+		return append(n.SendAppendEntries(),Message{
+				SenderId: n.Id,
+				ReceiverId: "CLIENT",
+				Type: MsgLeaderCheck,
+				Payload: 	LeaderCheck{LeaderId: n.CurrentLeader}})
 
 	default: 
 		panic("invalid state of the leader")
 	}
 
-	return nil
 }
 
 
 
 func (n *Node) buildAppendEntry(nextIndex int) AppendEntriesEvent{
 		prevLogIndex:= nextIndex - 1
+	if prevLogIndex == -1{
+		panic("pvlogInedx es -1, paniccc")
+	}
+	fmt.Println("prevLogIndex seria: ", prevLogIndex)
+	fmt.Println("el size: ", len(n.Log))
 		prevLogTerm:= n.Log[prevLogIndex].Term
 		
 		entries:= []Entry{}
@@ -114,6 +125,10 @@ func (n *Node) HandleAppendEntriesResponse(requestEvent AppendEntriesResponseEve
 
 	if !requestEvent.Succes{
 		messages := []Message{}
+		if followerId == "Node5"{
+		fmt.Println("Me llego Not Succes")
+		fmt.Println("nuevo NextIndex: ", n.NextIndex[followerId] - 1)
+	}
 
 		n.NextIndex[followerId] --
 
@@ -135,6 +150,11 @@ func (n *Node) HandleAppendEntriesResponse(requestEvent AppendEntriesResponseEve
 
 	n.CommitIndex = max(n.CommitIndex, minQuorumValue(n.MatchIindex))
 
+	if followerId == "Node5"{
+	fmt.Println("ME LLEGO UN SUCCES DE LOS FOLLOWERSSSSSSS: ", followerId)
+		fmt.Printf("MatchIndex nuevo: %v \n", n.MatchIindex[followerId])
+		fmt.Printf("NextIndex nuevo: %v \n", n.NextIndex[followerId])
+	}
 
 	//TODO: checkear last applied, pero hasta ahi estamos BIEN MELOS
 	return nil
