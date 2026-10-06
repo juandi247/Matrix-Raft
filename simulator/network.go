@@ -13,10 +13,12 @@ type SimNetwork struct {
 	FuzzyConfig  FuzzyConfig
 	TimeAdapter  adapters.TimeAdapter
 	IdCounter int //id counter for the messages to be deliverd
+	EventChan chan sse.SseEvent
+	simClient SimClient
 }
 
 
-func (s *SimNetwork) SendMessage(messages []newraft.Message, eventChan chan sse.SseEvent) {
+func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 
 	events:= []sse.SimMessage{}
 
@@ -47,9 +49,9 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message, eventChan chan sse.
 
 
 	if len(events)!=0{
-	eventChan <- sse.NewSimulationMessagesPushed(events)
+		s.EventChan <- sse.NewSimulationMessagesPushed(events)
 	}
-	s.printQueueData()
+	// s.printQueueData()
 }
 
 

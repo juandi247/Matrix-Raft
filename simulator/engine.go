@@ -23,6 +23,8 @@ func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
 	// Config for the simulated Time struct
 	s.Time.Tick = 0
 	s.Network.IdCounter = 0	
+	s.Network.EventChan = eventChan
+	s.Network.simClient = SimClient{CachedLeaderId: ""}
 
 	// Config for the simulated Network struct
 	s.Network.TimeAdapter = s.Time
@@ -45,20 +47,13 @@ func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
 	fmt.Println("Configuration finished. Starting loop")
 	// Engine Loop of execution
 	for s.Time.Now() <= maxTicks {
+
 		// advance 1 tick
 		s.Time.Advance(TickFrequency)
 		eventChan <- sse.NewTickAdvanceEvent(int(s.Time.Now()))
 
 
 		fmt.Printf("Starting tick:  %v \n", s.Time.Now())
-		if  s.Network.messageQueue.Peek()!=nil{
-		fmt.Printf("PEEK MESSAGE - DeliveryTick: %d, Receiver: %s, MessageType: %d \n", 
-			s.Network.messageQueue.Peek().DeliveryTick,
-			s.Network.messageQueue.Peek().Message.ReceiverId,
-			s.Network.messageQueue.Peek().Message.Type,
-			)
-
-		}
 		//crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
 
 		updateNodeTimers(nodeList, eventChan)
@@ -67,13 +62,19 @@ func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
 
 		handleTimeout(nodeList, s.Network)
 
+		//NOTE: handles the  client re1uests, esto podria ir en una funcoin extra
+		req:= s.Network.simClient.generateClientRequest(int(s.Network.TimeAdapter.Now()), s.Network.FuzzyConfig.rand)
+		if req!=nil{
+			fmt.Println("ENVIANDO nueva ENTRY")
+		s.Network.SendMessage(req)
+		}
+
 		//this is ONLY to read the queue and put the messages into the inbox. No logic of delivering messages to any node here.
 		if s.Network.messageQueue.Len() > 0 {
 			readMessagesToInbox(s.Network, nodeList, eventChan)
 		}
 
-		time.Sleep(1000* time.Millisecond)
-
+		time.Sleep(200* time.Millisecond)
 
 		
 	}
@@ -140,7 +141,7 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 			CurrTerm: 0,
 			VotedFor: "",
 			Log: []newraft.Entry{
-				newraft.Entry{Term: 0, Value: "SKIPPER"},
+				newraft.Entry{Term: 0, Value: "SKIPPER", Index: 0},
 			},
 
 			CommitIndex: 0,
@@ -223,10 +224,6 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 	for i:=0; i<sn.messageQueue.Len(); i++{
 		msg:= sn.messageQueue.Peek()
 		
-		fmt.Println("MENSAGE QUE SE VA A LEER: ", msg.Message.Type)
-		fmt.Println("con delivery tick: ", msg.DeliveryTick)
-		fmt.Println("Receiver: ", msg.Message.ReceiverId)
-		fmt.Println(" --- ")
 		if msg.DeliveryTick > int(sn.TimeAdapter.Now()) {
 			return
 		}
@@ -252,24 +249,32 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 
 		receiverNodeId:= msg.Message.ReceiverId
 
-		fmt.Println("RECEVIER NODE: ", receiverNodeId)
+
 		if receiverNodeId == ""{
 			panic("receiver id was empty")
+		}
+
+
+
+
+		//NOTE: CHECK IF THE MESSAGE GOES BACK TO A CLIENT
+		if receiverNodeId == ClientId{
+			sn.simClient.handleIncomingMessage(*msg)
+			return
 		}
 
 		
 		 for _ , node:=range nodeList{
 			if node.Id == receiverNodeId{
-				fmt.Printf("%v VA a hacer HANLDE EVENT \n de mensaje desde: %v con deliveryTick: %v\n", node.Id, msg.Message.SenderId, msg.DeliveryTick)
+
+				if node.Id == "Node5" || node.Id == "Node1"{
+				fmt.Printf("%v VA a hacer HANLDE EVENT de mensaje desde: %v con deliveryTick: %v\n", node.Id, msg.Message.SenderId, msg.DeliveryTick)
+				}
 				eventChan <- sse.NewSimulationMessageDelivered(msg.Id)
 				responseMessages:=node.HandleEvent(msg.Message)
-				if len(responseMessages)==0{
-					fmt.Println("resopnse messages fue CERO")
-				}
 				eventChan <- sse.NewNodeStateUpdateEvent(node)
 
-				fmt.Printf("Desde: %v respondimos con:  %v mensajes \n", node.Id, len(responseMessages))
-				sn.SendMessage(responseMessages, eventChan)
+				sn.SendMessage(responseMessages)
 				break
 			}
 		}
