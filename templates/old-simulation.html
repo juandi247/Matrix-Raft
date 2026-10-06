@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -135,7 +136,7 @@ fieldset { border: 0; margin: 0; padding: 0; }
 /* running: the left area is for the nodes, the right edge is the network */
 .is-running main.container { max-width: none; margin: 0; padding-right: calc(var(--net-width) + var(--space-3)); }
 
-.run__bar { position: sticky; top: 0; z-index: 4; background: var(--color-bg); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); padding: var(--space-2) 0; border-bottom: var(--border); font: 400 var(--text-sm)/1.4 var(--font-mono); color: var(--color-muted); }
+.run__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); padding: var(--space-2) 0; border-bottom: var(--border); font: 400 var(--text-sm)/1.4 var(--font-mono); color: var(--color-muted); }
 .run__bar b { color: var(--color-text); font-weight: 500; }
 .seg { display: inline-flex; margin-left: auto; border: var(--border); border-radius: var(--radius); overflow: hidden; }
 .seg button { padding: 0.4rem 0.8rem; background: transparent; color: var(--color-muted); border: 0; font: 500 var(--text-sm)/1 var(--font-mono); cursor: pointer; }
@@ -152,7 +153,7 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .dot { display: inline-block; width: 0.75em; height: 0.75em; border-radius: 50%; background: var(--msg); flex: none; }
 
 /* nodes: placed on the corners of a regular polygon (see layoutNodes) */
-.stage { position: relative; width: min(100%, 64rem, max(calc((100vh - 6rem) * 50 / 52), 46rem)); aspect-ratio: 50 / 52; margin: var(--space-3) auto; }
+.stage { position: relative; width: min(100%, 50rem, calc((100vh - 6rem) * 50 / 52)); aspect-ratio: 50 / 52; margin: var(--space-3) auto; }
 .links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .links line { stroke: color-mix(in srgb, var(--color-text) 14%, transparent); stroke-width: 1; }
 .nodes { position: absolute; inset: 0; }
@@ -160,37 +161,25 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .node[data-role="0"] { --role-color: var(--role-follower); }
 .node[data-role="1"] { --role-color: var(--role-candidate); }
 .node[data-role="2"] { --role-color: var(--role-leader); }
+		.node__stats .leader-only {
+  display: none;
+}
+
+.node[data-role="2"] .node__stats .leader-only {
+  display: block;
+}
 .node__circle { width: 5rem; height: 5rem; margin: 0 auto; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--role-color); background: color-mix(in srgb, var(--role-color) 16%, var(--color-bg)); font: 500 0.8rem/1 var(--font-mono); transition: border-color 0.5s ease, background-color 0.5s ease; }
-.node__info { margin-top: var(--space-1); padding: var(--space-1) 0.75rem; display: grid; gap: var(--space-1); background: var(--color-surface); border: var(--border); border-radius: var(--radius); }
+.node__info { margin-top: var(--space-1); padding: var(--space-1) var(--space-2); display: grid; gap: var(--space-1); background: var(--color-surface); border: var(--border); border-radius: var(--radius); }
 .node__role { margin: 0; text-align: center; font: 600 var(--text-base)/1.2 var(--font-mono); color: var(--role-color); transition: color 0.5s ease; }
-.node__stats { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center; font-family: var(--font-mono); }
-.node__stats dt { font-size: 0.7rem; color: var(--color-muted); }
-.node__stats dd { margin: 0; font-size: 0.95rem; font-weight: 500; }
-.node__indexes { display: none; }
-.node[data-role="2"] .node__indexes { display: block; }
-
-/* messages travelling along the lines */
-.packets { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
-.packet { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--msg); box-shadow: 0 0 10px var(--msg); transition-property: transform; transition-timing-function: linear; will-change: transform; }
-
-/* next / match index panel (same look as the full log) */
-.indexpanel { width: min(26rem, calc(100vw - var(--net-width) - 3rem)); }
-
-.node__log { display: grid; gap: 0.35rem; padding-top: var(--space-1); border-top: var(--border); }
-.node__last { margin: 0; font: 400 0.8rem/1.3 var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
-.node__more { padding: 0.3rem 0.5rem; background: transparent; color: var(--color-text); border: var(--border); border-radius: var(--radius); font: 500 0.75rem/1.2 var(--font-mono); cursor: pointer; }
-.node__more:hover { border-color: var(--color-accent); }
-
-/* full log: a panel above the page. The simulation keeps running behind it */
-.fulllog { position: fixed; z-index: 6; top: 50%; left: calc((100vw - var(--net-width)) / 2); transform: translate(-50%, -50%); width: min(34rem, calc(100vw - var(--net-width) - 3rem)); max-height: 70vh; display: flex; flex-direction: column; background: var(--color-surface); border: 1px solid var(--color-device-line); border-radius: var(--radius); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65); }
-.fulllog__head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-bottom: var(--border); font: 400 var(--text-sm)/1.4 var(--font-mono); }
-.fulllog__head strong { font-weight: 600; }
-.fulllog__head .button { margin-left: auto; }
-.fulllog__scroll { min-height: 0; overflow: auto; padding: 0 var(--space-2) var(--space-1); }
-.fulllog__table { width: 100%; border-collapse: collapse; font: 400 0.8rem/1.5 var(--font-mono); }
-.fulllog__table th, .fulllog__table td { text-align: left; padding: 0.15rem 0.75rem 0.15rem 0; vertical-align: top; }
-.fulllog__table td:last-child { overflow-wrap: anywhere; }
-.fulllog__table th { position: sticky; top: 0; background: var(--color-surface); color: var(--color-muted); font-weight: 400; padding-top: var(--space-1); }
+.node__stats { margin: 0; display: grid; gap: 0.1rem; font: 400 var(--text-sm)/1.4 var(--font-mono); }
+.node__stats div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.node__stats dt { color: var(--color-muted); }
+.node__stats dd { margin: 0; }
+.node__logwrap { max-height: 5.5rem; overflow-y: auto; border-top: var(--border); }
+.node__log { width: 100%; border-collapse: collapse; font: 400 0.8rem/1.5 var(--font-mono); }
+.node__log th, .node__log td { text-align: left; padding: 0.1rem 0.4rem 0.1rem 0; }
+.node__log th { position: sticky; top: 0; background: var(--color-surface); color: var(--color-muted); font-weight: 400; }
+.node__log td:last-child { max-width: 4.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ==========================================================
    NETWORK: the router pinned to the right edge
@@ -252,13 +241,12 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
   .is-running main.container { padding-right: var(--space-3); }
   .stage { width: 100%; aspect-ratio: auto; }
   .nodes { position: static; display: grid; gap: var(--space-3); }
-  .links, .packets { display: none; }
+  .links { display: none; }
   .node { position: static; width: auto; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .countdown, .msgs li.is-new, .flow .dot.is-new { animation: none; }
   .node__circle, .node__role, .node { transition: none; }
-  .packet { transition: none; }
 }
 </style>
 </head>
@@ -338,14 +326,13 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
       <div class="legend" id="legend" aria-label="Message colors"></div>
     </div>
 
-    <!-- Nodes. Cards are created by renderNodeState(); the lines by drawNodeLinks() (both in sim-events.js) -->
+    <!-- Nodes. Cards are created by renderNodeState(); the lines by drawNodeLinks() -->
     <div class="stage">
       <svg class="links" id="links" aria-hidden="true"></svg>
       <div class="nodes" id="nodes"></div>
-      <div class="packets" id="packets" aria-hidden="true"></div>
     </div>
 
-    <!-- Network: the router. Rows and dots are created by handleNewMessage() (sim-events.js) -->
+    <!-- Network: the router. Rows and dots are created by handleNewMessage() -->
     <aside class="net" aria-label="Network">
       <svg class="net__art" viewBox="0 0 300 800" aria-hidden="true">
         <rect class="art-body" x="52" y="14" width="8" height="60" rx="3"/>
@@ -373,35 +360,6 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
       </div>
 
       <div class="net__gate net__gate--bottom">send ↑</div>
-    </aside>
-
-    <!-- Full log of one node -->
-    <aside class="fulllog" id="fulllog" role="dialog" aria-labelledby="fulllog-title" hidden>
-      <header class="fulllog__head">
-        <strong id="fulllog-title">Log</strong>
-        <span class="muted" id="fulllog-count"></span>
-        <button class="button button--ghost" id="fulllog-close" type="button">Close</button>
-      </header>
-      <div class="fulllog__scroll" id="fulllog-scroll">
-        <table class="fulllog__table">
-          <thead><tr><th>index</th><th>term</th><th>value</th></tr></thead>
-          <tbody id="fulllog-body"></tbody>
-        </table>
-      </div>
-    </aside>
-
-    <!-- Next / match index of the leader -->
-    <aside class="fulllog indexpanel" id="indexpanel" role="dialog" aria-labelledby="indexpanel-title" hidden>
-      <header class="fulllog__head">
-        <strong id="indexpanel-title">Indexes</strong>
-        <button class="button button--ghost" id="indexpanel-close" type="button">Close</button>
-      </header>
-      <div class="fulllog__scroll">
-        <table class="fulllog__table">
-          <thead><tr><th>follower</th><th>nextIndex</th><th>matchIndex</th></tr></thead>
-          <tbody id="indexpanel-body"></tbody>
-        </table>
-      </div>
     </aside>
   </section>
 

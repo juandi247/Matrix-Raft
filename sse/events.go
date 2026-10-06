@@ -79,6 +79,8 @@ type NodeStateUpdateEvent struct {
 
 	CommitIndex                      int
 	SimulatorHeartBeatTimeoutCounter int
+	NextIndex map[string]int 
+	MatchIndex map[string]int 
 }
 
 
@@ -87,9 +89,11 @@ func NewNodeStateUpdateEvent(node *newraft.Node) NodeStateUpdateEvent{
 		NodeId: node.Id,
 		Term: node.CurrTerm,
 		Role: node.CurrentRole,
-		Log: node.Log  ,
+		Log: node.Log,
 		CommitIndex  :node.CommitIndex,             
 		SimulatorHeartBeatTimeoutCounter: node.SimulatorFields.HeartbeatTimeoutCounter,
+		NextIndex: node.NextIndex, 
+		MatchIndex: node.MatchIindex,
 	}
 }
 

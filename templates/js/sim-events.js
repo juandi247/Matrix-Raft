@@ -38,7 +38,9 @@ function handleSimulatorEvent(event) {
   switch (event.EventType) {
     case SimulatorEventType.TickAdvance:
       $('tick').textContent = event.Payload.Tick;
-      deliverDueMessages(event.Payload.Tick); // deliver every message whose DeliveryTick has arrived
+      onTick(event.Payload.Tick);               // remember the tick and the real time between ticks
+      deliverDueMessages(event.Payload.Tick);   // arrivals first
+      movePackets(event.Payload.Tick);          // then every message in flight glides on to the next tick
       break;
 
     case SimulatorEventType.NodeCrashed:
@@ -58,12 +60,10 @@ function handleSimulatorEvent(event) {
       break;
 
     case SimulatorEventType.NewMessage:
-      console.log("MENSAGE NUEVO: ", event.Payload);
       handleNewMessage(event.Payload);
       break;
 
     case SimulatorEventType.MessageDelivered:
-      console.log('MessageDelivered event:', event.Payload);
       removeMessageById(event.Payload.MessageId ?? event.Payload.Id);
       break;
 
@@ -97,8 +97,12 @@ function handleHeartbeatEvent(payload) {
 // identical updates do nothing (no flicker).
 
 const ROLE_NAMES = ['follower', 'candidate', 'leader']; // Go iota: 0, 1, 2
+const ROLE_LEADER = 2;
 
-const nodeViews = new Map(); // NodeId -> { el, fields, last, log }
+// Node1, Node2, ..., Node10 in natural order. The maps always show in the same order.
+const byNodeName = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+
+const nodeViews = new Map(); // NodeId -> { el, fields, last, log, nextIndex, matchIndex }
 
 // Nodes sit on the corners of a regular polygon (triangle for 3, pentagon for 5, ...).
 // Positions are percentages of the .stage: center (cx, cy) and radii (rx, ry).
@@ -135,6 +139,7 @@ function createNodeView(id) {
       <div class="node__log">
         <p class="node__last" data-f="last">log empty</p>
         <button class="node__more" type="button" data-f="more">full log</button>
+        <button class="node__more node__indexes" type="button" data-f="indexes">next / match index</button>
       </div>
     </div>`;
 
@@ -142,6 +147,7 @@ function createNodeView(id) {
   el.querySelectorAll('[data-f]').forEach((f) => { fields[f.dataset.f] = f; });
   fields.id.textContent = id;
   fields.more.addEventListener('click', () => openLogPanel(id));
+  fields.indexes.addEventListener('click', () => openIndexPanel(id)); // only visible for the leader (CSS)
 
   // keep nodes sorted: Node1, Node2, ..., Node10
   const container = document.getElementById('nodes');
@@ -151,7 +157,7 @@ function createNodeView(id) {
   container.insertBefore(el, next || null);
   layoutNodes(); // a new node changes the polygon
 
-  return { el, fields, last: {}, log: [] };
+  return { el, fields, last: {}, log: [], nextIndex: {}, matchIndex: {} };
 }
 
 // Runs apply(value) only if the value differs from the last one rendered.
@@ -179,7 +185,7 @@ function renderLogSummary(view, log) {
   more.textContent = `full log · ${log.length}`;
 }
 
-// payload: { NodeId, Term, Role, Log, CommitIndex, SimulatorHeartBeatTimeoutCounter }
+// payload: { NodeId, Term, Role, Log, CommitIndex, SimulatorHeartBeatTimeoutCounter, NextIndex, MatchIndex }
 function renderNodeState(s) {
   let view = nodeViews.get(s.NodeId);
   if (!view) {
@@ -189,12 +195,24 @@ function renderNodeState(s) {
   const f = view.fields;
 
   updateIfChanged(view, 'role', s.Role, (role) => {
-    view.el.dataset.role = role;
+    view.el.dataset.role = role; // the CSS shows the "next / match index" button only when role = 2
     f.role.textContent = ROLE_NAMES[role] ?? 'unknown';
+    if (role !== ROLE_LEADER && openIndexId === s.NodeId) closeIndexPanel(); // no longer the leader
   });
   updateIfChanged(view, 'term', s.Term, (v) => { f.term.textContent = v; });
   updateIfChanged(view, 'commit', s.CommitIndex, (v) => { f.commit.textContent = v; });
   updateIfChanged(view, 'hb', s.SimulatorHeartBeatTimeoutCounter, (v) => { f.hb.textContent = v; });
+
+  // NextIndex / MatchIndex: maps FollowerId -> index. Go sends null for a nil map.
+  const next = s.NextIndex || {};
+  const match = s.MatchIndex || {};
+  view.nextIndex = next;
+  view.matchIndex = match;
+  const ids = [...new Set([...Object.keys(next), ...Object.keys(match)])].sort(byNodeName);
+  const indexSignature = ids.map((id) => `${id}:${next[id]}:${match[id]}`).join('|');
+  updateIfChanged(view, 'indexes', indexSignature, () => {
+    if (openIndexId === s.NodeId) renderIndexPanel(next, match); // keep the open panel live
+  });
 
   // The log can be huge, so the change check uses the length and the last entry only.
   const log = s.Log || []; // Go sends null for an empty slice
@@ -254,6 +272,7 @@ function renderLogPanel(log) {
 function openLogPanel(id) {
   const view = nodeViews.get(id);
   if (!view) return;
+  closeIndexPanel(); // only one floating panel at a time
   openLogId = id;
   panelCount = 0;
   netById('fulllog-title').textContent = `${id} · log`;
@@ -265,6 +284,64 @@ function openLogPanel(id) {
 function closeLogPanel() {
   openLogId = null;
   netById('fulllog').hidden = true;
+}
+
+
+// ======================= NEXT / MATCH INDEX PANEL (leader only) =======================
+// One row per follower, with its nextIndex and matchIndex side by side.
+// Opened from the leader card. It updates live while it is open.
+
+let openIndexId = null;      // NodeId of the open panel, or null
+let indexCells = new Map();  // follower id -> { next, match } table cells
+
+function setCellText(cell, value) {
+  const text = formatValue(value);
+  if (cell.textContent !== text) cell.textContent = text; // only touch the DOM when it changed
+}
+
+function renderIndexPanel(next, match) {
+  const body = netById('indexpanel-body');
+  const ids = [...new Set([...Object.keys(next), ...Object.keys(match)])].sort(byNodeName);
+
+  // Rebuild the rows only when the set of followers changes. Otherwise update cell by cell.
+  if (ids.join('|') !== [...indexCells.keys()].join('|') || ids.length === 0) {
+    body.replaceChildren();
+    indexCells = new Map();
+    if (ids.length === 0) {
+      const td = body.insertRow().insertCell();
+      td.colSpan = 3;
+      td.className = 'muted';
+      td.textContent = 'no followers yet';
+      return;
+    }
+    for (const id of ids) {
+      const tr = body.insertRow();
+      tr.insertCell().textContent = id;
+      indexCells.set(id, { next: tr.insertCell(), match: tr.insertCell() });
+    }
+  }
+
+  for (const id of ids) {
+    setCellText(indexCells.get(id).next, next[id]);
+    setCellText(indexCells.get(id).match, match[id]);
+  }
+}
+
+function openIndexPanel(id) {
+  const view = nodeViews.get(id);
+  if (!view) return;
+  closeLogPanel(); // only one floating panel at a time
+  openIndexId = id;
+  indexCells = new Map();
+  netById('indexpanel-title').textContent = `${id} · next / match index`;
+  netById('indexpanel').hidden = false;
+  renderIndexPanel(view.nextIndex, view.matchIndex);
+  netById('indexpanel-close').focus();
+}
+
+function closeIndexPanel() {
+  openIndexId = null;
+  netById('indexpanel').hidden = true;
 }
 
 
@@ -297,8 +374,18 @@ const NETWORK_TYPES = Object.freeze({
   [MessageType.RequestVoteResponse]: 'RequestVoteResponse',
 });
 
+// The CSS variable that holds the color of each type (used for the receive effect).
+const NETWORK_COLOR_VARS = Object.freeze({
+  [MessageType.NewEntry]: '--msg-new-entry',
+  [MessageType.AppendEntries]: '--msg-append',
+  [MessageType.AppendEntriesResponse]: '--msg-append-response',
+  [MessageType.RequestVote]: '--msg-vote',
+  [MessageType.RequestVoteResponse]: '--msg-vote-response',
+});
+
 // Messages in flight, sorted by DeliveryTick (soonest first, ties by id).
-// Each item: { id, tick, type, from, to, row, dot }. The id is kept but never shown.
+// Each item: { id, tick, sent, type, from, to, row, dot, packet, progress }.
+// The id is kept but never shown.
 const networkQueue = [];
 
 const NEW_ANIMATION_MS = 1200;
@@ -310,6 +397,11 @@ function netEl(tag, cls, text) {
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+function typeColor(type) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(NETWORK_COLOR_VARS[type]);
+  return value.trim() || '#8093ff';
 }
 
 // Reads a SimMessage. If newraft.Message uses other field names, change them here.
@@ -384,7 +476,7 @@ function insertAt(parent, el, index) {
 function enqueueMessage(m) {
   if (networkQueue.some((q) => q.id === m.id)) return; // already in the queue
 
-  const item = { ...m, row: createRow(m), dot: createDot(m) };
+  const item = { ...m, sent: currentTick, progress: 0, row: createRow(m), dot: createDot(m), packet: null };
 
   // keep the queue ordered by DeliveryTick, then by id
   const at = networkQueue.findIndex((q) => q.tick > m.tick || (q.tick === m.tick && q.id > m.id));
@@ -402,6 +494,9 @@ function enqueueMessage(m) {
     item.dot.classList.remove('is-new');
   }, NEW_ANIMATION_MS);
 
+  item.packet = createPacket(item);                       // a dot on the sender...
+  if (item.packet) movePacket(item, currentTick + 1);     // ...that starts travelling right away
+
   updateNetworkMeta();
 }
 
@@ -411,7 +506,119 @@ function updateNetworkMeta() {
 }
 
 
-// ------------ DELIVERY: remove from the queue + animation ------------
+// ------------ TIME: the current tick and how long a tick takes in real time ------------
+
+let currentTick = 0;
+let tickMs = 400;      // estimated real time between two ticks (smoothed)
+let lastTickAt = 0;
+
+function onTick(tick) {
+  const now = performance.now();
+  if (lastTickAt) {
+    const elapsed = now - lastTickAt;
+    tickMs = Math.min(3000, Math.max(16, tickMs * 0.6 + elapsed * 0.4));
+  }
+  lastTickAt = now;
+  currentTick = tick;
+}
+
+
+// ------------ PACKETS: a message travelling along the line, tick by tick ------------
+// The dot leaves the sender at the tick it was sent and reaches the receiver exactly at its
+// DeliveryTick. Between ticks it keeps gliding (a CSS transition as long as one tick takes),
+// so it moves steadily instead of jumping.
+
+// Center of a node's circle in px, relative to #nodes (null if there is no such node).
+function nodeCenter(id) {
+  const card = [...netById('nodes').children].find((c) => c.dataset.id === id);
+  if (!card) return null;
+  const nodes = netById('nodes');
+  return {
+    x: (parseFloat(card.style.left) / 100) * nodes.clientWidth,
+    y: (parseFloat(card.style.top) / 100) * nodes.clientHeight,
+  };
+}
+
+function ballRadius() {
+  const ball = document.querySelector('.node__circle');
+  return ball ? ball.offsetWidth / 2 : 40;
+}
+
+// For a sender or receiver that is not a node (a client sending a NewEntry): the left edge
+// of the router, at the height of the node on the other side.
+function networkEdge(y) {
+  const nodes = netById('nodes').getBoundingClientRect();
+  const net = document.querySelector('.net').getBoundingClientRect();
+  return { x: net.left - nodes.left, y };
+}
+
+// Straight path from the edge of the sender circle to the edge of the receiver circle.
+function packetPath(item) {
+  const a = nodeCenter(item.from);
+  const b = nodeCenter(item.to);
+  if (!a && !b) return null;
+
+  const start = a ?? networkEdge(b.y);
+  const end = b ?? networkEdge(a.y);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const gap = ballRadius() + 4;
+  const g0 = a ? gap : 0;
+  const g1 = b ? gap : 0;
+
+  return {
+    x0: start.x + (dx / len) * g0, y0: start.y + (dy / len) * g0,
+    x1: end.x - (dx / len) * g1,   y1: end.y - (dy / len) * g1,
+  };
+}
+
+// 0 at the tick it was sent, 1 at its DeliveryTick.
+function progressAt(item, tick) {
+  const span = item.tick - item.sent;
+  if (span <= 0) return 1;
+  return Math.min(1, Math.max(0, (tick - item.sent) / span));
+}
+
+function createPacket(item) {
+  const path = packetPath(item);
+  if (!path) return null;
+
+  const el = netEl('i', 'packet');
+  el.dataset.type = item.type;
+  netById('packets').append(el);
+
+  el.style.transitionDuration = '0ms';
+  el.style.transform = `translate(${path.x0}px, ${path.y0}px)`; // starts on the sender
+  void el.offsetWidth; // apply that position before animating
+  return el;
+}
+
+// Moves the dot to where it must be at `tick`, taking `ms` to get there.
+function movePacket(item, tick, ms = tickMs) {
+  const path = packetPath(item);
+  if (!item.packet || !path) return;
+
+  const p = progressAt(item, tick);
+  item.progress = p;
+  item.packet.style.transitionDuration = `${ms}ms`;
+  item.packet.style.transform =
+    `translate(${path.x0 + (path.x1 - path.x0) * p}px, ${path.y0 + (path.y1 - path.y0) * p}px)`;
+}
+
+// On every tick, each dot starts gliding toward its position at the NEXT tick, so it
+// arrives at the receiver exactly when the delivery tick arrives.
+function movePackets(tick) {
+  for (const item of networkQueue) movePacket(item, tick + 1);
+}
+
+// Layout changed (window resized): put the dots where they belong, without animation.
+window.addEventListener('resize', () => {
+  for (const item of networkQueue) movePacket(item, currentTick + 1, 0);
+});
+
+
+// ------------ DELIVERY ------------
 
 // Called on every tick: the queue is sorted, so we only look at the front.
 function deliverDueMessages(tick) {
@@ -421,7 +628,7 @@ function deliverDueMessages(tick) {
 }
 
 // Delivers a message by id (called from the MessageDelivered event). It does nothing if the
-// message was already delivered by deliverDueMessages(), so the animation never plays twice.
+// message was already delivered by deliverDueMessages(), so the effect never plays twice.
 function removeMessageById(id) {
   const item = networkQueue.find((q) => String(q.id) === String(id));
   if (item) deliverMessage(item);
@@ -431,70 +638,37 @@ function deliverMessage(item) {
   const index = networkQueue.indexOf(item);
   if (index === -1) return;
 
-  const origin = queuePoint(item); // read the position BEFORE removing the elements
-
   item.row.remove();
   item.dot.remove();
   networkQueue.splice(index, 1);
   updateNetworkMeta();
 
-  animateDelivery(item, origin);
+  arrive(item);
 }
 
-function centerOf(el) {
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-}
+// The dot reaches the receiver: it disappears and the receiver bounces.
+function arrive(item) {
+  const el = item.packet;
+  const ball = nodeBall(item.to);
 
-// Where the message sits in the router right now (explicit row or hidden dot).
-function queuePoint(item) {
-  if (item.row.offsetParent !== null) return centerOf(item.row.querySelector('.dot'));
-  if (item.dot.offsetParent !== null) return centerOf(item.dot);
-  return centerOf(document.querySelector('.net'));
+  const done = () => {
+    if (el) el.remove();
+    if (ball && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      receiveBounce(ball, typeColor(item.type));
+    }
+  };
+
+  if (el && item.progress < 1) {   // delivered before it got there: finish the trip quickly
+    movePacket(item, item.tick, 120);
+    setTimeout(done, 130);
+  } else {
+    done();
+  }
 }
 
 function nodeBall(id) {
   const card = [...netById('nodes').children].find((c) => c.dataset.id === id);
   return card ? card.querySelector('.node__circle') : null;
-}
-
-const LEG_MS = { toSender: 450, toReceiver: 650, direct: 800, fade: 150 };
-
-// network -> sender -> (along the line) -> receiver, then the receiver bounces.
-function animateDelivery(item, origin) {
-  const toBall = nodeBall(item.to);
-  if (!toBall) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  const fromBall = nodeBall(item.from); // can be missing, for example a client sending a NewEntry
-  const points = [origin];
-  const legs = [];
-  if (fromBall) {
-    points.push(centerOf(fromBall));
-    legs.push(LEG_MS.toSender);
-  }
-  points.push(centerOf(toBall));
-  legs.push(fromBall ? LEG_MS.toReceiver : LEG_MS.direct);
-
-  const travel = legs.reduce((a, b) => a + b, 0);
-  const total = travel + LEG_MS.fade;
-
-  const flyer = netEl('i', 'flyer');
-  flyer.dataset.type = item.type;
-  netById('fx').append(flyer);
-  const color = getComputedStyle(flyer).backgroundColor;
-
-  const at = (p, scale) => `translate(${p.x}px, ${p.y}px) translate(-50%, -50%) scale(${scale})`;
-  let elapsed = 0;
-  const frames = points.map((p, i) => {
-    if (i > 0) elapsed += legs[i - 1];
-    return { transform: at(p, 1), opacity: 1, offset: elapsed / total, easing: 'ease-in-out' };
-  });
-  const end = points[points.length - 1];
-  frames.push({ transform: at(end, 1.8), opacity: 0, offset: 1 });
-
-  flyer.animate(frames, { duration: total }).finished.then(() => flyer.remove(), () => flyer.remove());
-  setTimeout(() => receiveBounce(toBall, color), travel);
 }
 
 // A small jump, like "I received something".
@@ -547,9 +721,12 @@ function initNetworkUI() {
     buttons.forEach((x) => x.setAttribute('aria-pressed', x === b));
   }));
 
-  // full log panel
+  // floating panels
   netById('fulllog-close').addEventListener('click', closeLogPanel);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLogPanel(); });
+  netById('indexpanel-close').addEventListener('click', closeIndexPanel);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeLogPanel(); closeIndexPanel(); }
+  });
 }
 
 initNetworkUI();

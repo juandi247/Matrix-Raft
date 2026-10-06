@@ -1,0 +1,71 @@
+
+{
+	"type": "TickAdvance" //string
+	"payload": {
+		"tick": "tick" //string
+	}
+}
+
+
+{
+	"type": "NodeCrashed" //string
+	"payload": {
+		"nodeId": "Node1"  //string
+	}
+}
+
+
+
+
+{
+	"type": "NodeBackToLife" //string
+	"payload": {
+		"nodeId": "Node1"  //string
+	}
+}
+	
+
+
+{
+	"type": "NodeTimeout" //string
+	"payload": {
+		"nodeId": "Node1"  //string
+	}
+}
+	
+
+{
+	"type": "NewMessages" //string
+	"payload": {
+		"id": "224" //int
+		"senderId": "Node1"  //string
+		"receiverId": "Node3"  //string
+		"raftEvent": "AppendEntries" //string
+		"deliveryTick": "4" //int
+	}
+}
+	
+{
+	"type": "MessageDelivered" //string
+	"payload": {
+		"messageId": "224"  //int
+	}
+}
+
+
+
+{
+	"type": "nodeStateUpdate"
+	"payload": {
+		"nodeId": "Node1"  //string
+		"term": "5" //int
+		"log": "[ {idx: 0, Term: 0}]"  //array (but can be modified later todo)
+		
+		"commitIndex": "5" //int
+		"heartbeatTimeout": "25" //int 
+
+		//FOR LEADER
+		"nextIndex": "[ {id: node2, idx: 5},{id: node3, idx: 5}, ]"   //array (or if posible a map)
+		"matchINdex": "[ {id: node2, idx: 3},{id: node3, idx: 3}, ]" 
+	}
+}
