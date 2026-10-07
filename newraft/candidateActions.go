@@ -1,6 +1,5 @@
 package newraft
 
-import "fmt"
 
 /* ---- METHODS REACTING TO INCOMING EVENTS -------- */
 func (n *Node)HandleCandidateAction(mesage Message) []Message{
@@ -60,14 +59,11 @@ func (n *Node) HandleResponseVote(eventResponse RequestVoteResponseEvent, voterI
 		n.VotesGranted[voterId] = 1
 	}
 
-	fmt.Printf("[%v] Recevied a Vote", n.Id)
-	
 	//we havent REached our goal of votes YET
 	if minQuorumValue(n.VotesGranted) != 1{
 		return nil
 	}
 
-	fmt.Println("WE REACHED A QUORUM OF VOTES, Now im a leader")
 
 	//we reached the minimum Votes to be leader, we convert to leader, and return here the mesage
 	return n.transitionRole(LEADER)

@@ -1,6 +1,5 @@
 package newraft
 
-import "fmt"
 
 /* ---- METHODS REACTING TO INCOMING EVENTS -------- */
 func (n *Node)HandleFollowerAction(mesage Message) []Message{
@@ -65,23 +64,12 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 		Succes: false,
 	}
 
-	if n.Id== "Node5"{
-	fmt.Printf("Append entries del lider: \n")
-	fmt.Printf(" PrevLogIndex: %v \n", requestEvent.PrevLogIndex)
-	fmt.Printf(" PrevLogTerm: %v \n", requestEvent.PrevLogTerm)
-	fmt.Printf(" CommitIndex: %v \n", requestEvent.LeaderCommitIndex)
-
-	if len(requestEvent.Entries)>0{
-		fmt.Printf(" Entries: %v \n", requestEvent.Entries[:])
-		}
-	}
 
 	followerLastIndex:= len(n.Log) - 1 
 
 	//if log does not contain an entry on the prevLogIndex, automatic error, this makes sure we have something in the same index  
 	if requestEvent.PrevLogIndex > followerLastIndex{
 		responseMessage.Payload = responseEvent
-		fmt.Println("FOLLOWER: El lgo no cotneiene la prevLogIndex, por lo tanto retornamos false, prevLog: ", requestEvent.PrevLogIndex, " lastIndexfollower: ", followerLastIndex)
 		return append(messages, responseMessage)
 
 	}
@@ -90,9 +78,6 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 	//if the Term does not match, we have a problem
 	if requestEvent.PrevLogTerm != n.Log[requestEvent.PrevLogIndex].Term{
 		responseMessage.Payload = responseEvent
-		fmt.Println("el index request es: ", requestEvent.PrevLogIndex)
-		fmt.Println("el index de follower: ", followerLastIndex)
-		fmt.Println("FOLLOWER: El log no matchea term, por lo tanto retornamos false, prevLogTERM: ", requestEvent.PrevLogTerm, " lastIndexfolloweTERMr: ", n.Log[followerLastIndex].Term)
 		return append(messages, responseMessage)
 
 	}
@@ -122,11 +107,6 @@ log[lastApplied] to state machine (§5.3), que signficaria que deberiamos hacer 
 
 	responseMessage.Payload = responseEvent
 
-	if n.Id=="Node5"{
-	fmt.Println("\n Rspusta SUCCES")
-	fmt.Printf(" FollowerCommitIndex: %v\n", n.CommitIndex)
-	fmt.Printf(" MatchIndex: %v\n", responseEvent.MatchIndex)
-}
 	return append(messages, responseMessage)
 
 }
@@ -143,7 +123,6 @@ func (n *Node) HandleRequestVote(requestEvent RequestVoteEvent)[]Message{
 
 	}
 
-	fmt.Println("current TERM desde el handleRequestvote: ", n.CurrTerm)
 	responseEventPayload:= RequestVoteResponseEvent{
 		Term: n.CurrTerm,
 		VoteGranted: false,
@@ -185,7 +164,6 @@ func (n *Node) HandleRequestVote(requestEvent RequestVoteEvent)[]Message{
 
 	responseEventPayload.VoteGranted=true
 	responseMessage.Payload = responseEventPayload
-	fmt.Printf("[%v] voted for: %v ",n.Id, requestEvent.CandidateId)
 	return append(messages, responseMessage)
 
 }

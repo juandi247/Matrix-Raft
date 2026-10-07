@@ -90,7 +90,6 @@ func (n *Node) updateTerm(newTerm int) {
 		panic("something is wrong updating the term, recevied the new term same or smaller than current term")
 	}
 	n.CurrTerm = newTerm
-	fmt.Printf("[%v] updating term to %v", n.Id, n.CurrTerm)
 	//TODO: save in storage
 }
 
@@ -189,8 +188,6 @@ func minQuorumValue(dataMap map[string]int) int {
 	}
 	slices.Sort(slice)
 
-	fmt.Println("LENGTH DEL slice", len(slice))
-	fmt.Println("debe ser 4, contenido: ", slice[:])
 	idx:= Quorum - 1
 	return slice[idx]
 
