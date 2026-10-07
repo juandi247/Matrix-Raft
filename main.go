@@ -1,71 +1,121 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	// "simba/adapters"
 	"simba/server"
-
-	// "simba/reality"
 	"simba/simulator"
 )
 
 const matrixMode bool = true
-const SEED = 12345
-// By DEFAULT LOW but this should ve changed for the simulations, and for runtime too(?)
 const fuzzyLevel simulator.FuzzyLevel = simulator.LOW
 
+
+
+
 func main() {
-	// var runner adapters.Runner
-
-	if matrixMode {
-		
-		httpServer:=server.NewHttpServer(":8090", false, "", "")
 
 
-		go func(){
-			err:= httpServer.StartServer()
-			if err!=nil{
-				fmt.Println("error: ", err)
-				return
-			}
-		}()
-
-		/*
-		fuzzyConfig := simulator.FuzzyConfiguration(SEED, fuzzyLevel)
 
 
-		runner = &simulator.SimulationRunner{
-			Time:               &simulator.SimTime{},
-			Network:            &simulator.SimNetwork{},
-			FuzzyProbabilities: fuzzyConfig,
-			Port: "8080",
-			IsHttps: false,
+	mode:=	flag.String("mode","V", "Usage: Pass as value:\n V (for visualization mode) \n M (matrix mode) \n R (real implementation)\n Default value is V")
+
+	//NOTE: Only for Visualizatoin MODE OR REAL MODE
+		port:=	flag.Int("port", 8080, "Usage: Pass a port such as 8090. Port is by default 8080")
+		isHttps:=flag.Bool("https", false, "Pass boolean to activate https. If true, use the flags of -certfile & -keyfile to pass the path for both")
+		certFilePath:=flag.String("certfile", "", "Pass the path for the certfile (only when -http flag is true)")
+		keyFilePath:=flag.String("keyfile", "", "Pass the path for the keyfile (only when -https flag is true)")
+
+
+
+	//NOTE: Only for Simulator MODE
+		seed:=	flag.Int64("seed", 0, "Default seed is 1234")
+		maxTicks:=flag.Int64("maxticks", 100_000, "Max ticks for the simulation to run")
+		//TODO: config for the fuzzy probabitlies
+		//fuzzyLevel:=flag.String("fuzzylevel", "LOW", "")
+
+
+
+
+	flag.Parse()
+
+	switch *mode{
+
+	case "V":
+		err:=	StartVisualizationMode(*port, *isHttps, *certFilePath, *keyFilePath)
+		if err!=nil{
+			fmt.Println("Error found: ", err)
+			return
 		}
-*/
-		/*
-crear la f uzzyConfiguration con la seed, y el level (po rahora el level siempre sera igual)
+	case "M":
+		err:=StartMatrixMode(*seed, *maxTicks)
+		if err!=nil{
+			fmt.Println("Error found: ", err)
+			return
+		}
+		
+	case "R":
 
 
-iniciar el similatorRunner
-
-*/
-	} else {
-		// transportAdapter:= &reality.RealNetwork{}
-		// timeAdapter := &reality.PhysicalTime{}
-
-		// runner= some runner
-
+	default: 
+		fmt.Println("Mode not recognized, please provide V (visualization mode), M (matix mode) or R (for real mode)")
+		return
 	}
-	fmt.Println("starting program")
-//	runner.Start()
 	select{}
 }
 
 
 
 
+func StartVisualizationMode(port int, isHttps bool, certFilePath, keyFilePath string) error{
+	fmt.Println("visualizaton mode")
+	fmt.Println("https: ", isHttps)
 
-func coso(i, j int) int{
+		if isHttps && (certFilePath == "" || keyFilePath ==""){
+			return fmt.Errorf("certfile or keyfile not provided for https")
+		}
 
-return i+j
+
+		httpServer:=server.NewHttpServer(fmt.Sprintf(":%d",port), isHttps, certFilePath, keyFilePath)
+
+		go func(){
+			err:= httpServer.StartServer()
+			if err!=nil{
+				fmt.Println("error starting server: ", err)
+				return
+			}
+		}()
+
+		return nil
+
+}
+
+
+
+
+func StartMatrixMode(seed int64, maxTicks int64) error{
+
+	if seed==0{
+		return fmt.Errorf("Seed not provided, please provide the -seed flag with a random int64")
+	}
+
+	fmt.Println("Matrix mode")
+
+	fuzzyConfig := simulator.NewFuzzyConfiguration(seed, fuzzyLevel)
+
+
+
+
+	sim:= &simulator.SimulationRunner{
+			Time:               &simulator.SimTime{},
+			Network:            &simulator.SimNetwork{},
+			FuzzyProbabilities: fuzzyConfig,
+			EventChannel: nil,
+			ShouldPublishEvents: false,
+		}
+
+	sim.Start()
+
+	return nil
+
 }

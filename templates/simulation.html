@@ -468,8 +468,66 @@ function setStatus(text) {
   $('run-status').hidden = false;
 }
 
-// When the countdown ends: start the simulation (Go handler) and listen to its events
 async function startSimulation(seed) {
+  let uid;
+
+  // 1. Create/configure the simulation and get its UID
+  try {
+    const response = await fetch('/configsim', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ seed }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Config failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    SimUid = data.Uid;
+		console.log("DATAAAA: ", data)
+
+  } catch (err) {
+    console.error(err);
+    setStatus('Could not configure the simulation.');
+    return;
+  }
+
+  // 2. Subscribe to SSE using the UID
+  const events = new EventSource(`/events?uid=${encodeURIComponent(SimUid)}`);
+
+  events.onmessage = (e) => {
+    try {
+      handleSimulatorEvent(JSON.parse(e.data));
+    } catch (err) {
+      console.error('Could not parse SSE event:', e.data, err);
+    }
+  };
+
+  events.onerror = (err) => {
+    console.error('SSE connection error:', err);
+  };
+
+	console.log("VAMOS A LLAMAR START SIM")
+  // 3. Start the simulation.
+  // We don't need to wait for the response.
+  fetch('/startsim', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ SimUid }),
+  }).catch((err) => {
+    console.error(err);
+    setStatus('Could not start the simulation.');
+  });
+}
+
+
+// When the countdown ends: start the simulation (Go handler) and listen to its events
+async function startSimulationOLDDD(seed) {
   try {
     await fetch('/startsim', {
       method: 'POST',
