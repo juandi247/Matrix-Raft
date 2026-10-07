@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"simba/simulator"
 	"simba/sse"
+
+	"github.com/google/uuid"
 )
 const fuzzyLevel simulator.FuzzyLevel = simulator.LOW
 
@@ -40,8 +43,48 @@ type SimulationConfig struct{
 
 }
 
-func startSimulation(eventChannel chan sse.SseEvent) http.HandlerFunc{
+const SimRunnerSessionKey = "simRunnerSession"
+func simulationUidCheckMiddleware(next http.HandlerFunc,simulatorSessionManager *SimulatorSessionManager ) http.HandlerFunc{
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		readUid := r.URL.Query().Get("uid")
+		// if r.Method != http.MethodPost{
+		// 	fmt.Println("error en el methodos")
+		// 	return
+		// }
+
+
+		uid, err:= uuid.Parse(readUid)
+		if err!=nil{
+			fmt.Println("error parsing uid: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+    		fmt.Println("UID:", uid)
+
+		simRunnerSession, exists:= simulatorSessionManager.SimulatorSessions[uid]
+
+		if !exists{
+			//TODO: resopnderle que no hay soimualcion para esa sesion
+			fmt.Println("no hay simulacion par ese UID")
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+
+
+		ctx:= context.WithValue(context.Background(), SimRunnerSessionKey ,simRunnerSession )
+		newR:= r.WithContext(ctx)
+
+		next.ServeHTTP(w, newR)
+	}
+
+}
+
+func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.HandlerFunc{
+	return func(w http.ResponseWriter, r *http.Request) {
+
 
 		if r.Method != http.MethodPost{
 			return
@@ -65,23 +108,43 @@ func startSimulation(eventChannel chan sse.SseEvent) http.HandlerFunc{
 
 
 		fmt.Println("LA SEED FUEEEEEEEEE: ", simConfig.Seed)
-		fuzzyConfig := simulator.FuzzyConfiguration(int64(simConfig.Seed), fuzzyLevel)
+		fuzzyConfig := simulator.NewFuzzyConfiguration(int64(simConfig.Seed), fuzzyLevel)
 
 
-		runner := &simulator.SimulationRunner{
+		uidGenerated, err:= uuid.NewUUID()
+
+		if err!=nil{
+			fmt.Println("Error generating UID", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Println("ID CREADO FUE: ", uidGenerated)
+		simulatorSessionManager.SimulatorSessions[uidGenerated]= &simulator.SimulationRunner{
 			Time:               &simulator.SimTime{},
 			Network:            &simulator.SimNetwork{},
 			FuzzyProbabilities: fuzzyConfig,
-			Port: "8080",
-			IsHttps: false,
+			EventChannel: make(chan sse.SseEvent, 100),
+			ShouldPublishEvents: true,
 		}
 
 
-		//this should be a goruoitne, le pasamos el channel de eventos y listo
+		uidStruct:= struct{
+			Uid uuid.UUID
+		}{
+		Uid: uidGenerated,
+	}
 
-	go	 runner.Start(eventChannel)
+		data, err = json.Marshal(uidStruct)
+		if err!=nil{
+			fmt.Println("error marshaling struct", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
-		w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+		
 
 
 	}
@@ -93,12 +156,15 @@ type SseApiJson struct{
 	EventType int
 	Payload sse.SseEvent
 }
-func sseEventsHandler(eventChannel chan sse.SseEvent) http.HandlerFunc{
-	return func(w http.ResponseWriter, r *http.Request) {
 
-  	w.Header().Set("Content-Type", "text/event-stream")
-    	w.Header().Set("Cache-Control", "no-cache")
-    	w.Header().Set("Connection", "keep-alive")
+func sseEventsHandler(w http.ResponseWriter, r *http.Request) {
+		simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
+		simRunner.Start()
+
+		//CONFIG FOR SSEEEE
+  		w.Header().Set("Content-Type", "text/event-stream")
+    		w.Header().Set("Cache-Control", "no-cache")
+    		w.Header().Set("Connection", "keep-alive")
 
 
 		rc:= http.NewResponseController(w)
@@ -111,7 +177,7 @@ func sseEventsHandler(eventChannel chan sse.SseEvent) http.HandlerFunc{
 
 			case <-doneChan:
 				return 
-			case event:= <- eventChannel: 
+			case event:= <- simRunner.EventChannel: 
 
 				encodedData, err:= json.Marshal(SseApiJson{
 					EventType: int(event.GetEventType()),
@@ -134,9 +200,29 @@ func sseEventsHandler(eventChannel chan sse.SseEvent) http.HandlerFunc{
 			}
 		}
 
-
-
-
-	}
 }
+
+
+
+func startSimulation(w http.ResponseWriter, r *http.Request){
+		simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
+		simRunner.Start()
+}
+
+
+func pauseSimulation(w http.ResponseWriter, r *http.Request){
+		simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
+		simRunner.PauseContext.SetState(simulator.StatePaused)
+		fmt.Println("Pausing Sim")
+		w.WriteHeader(http.StatusOK)
+}
+
+
+func resumeSimulation(w http.ResponseWriter, r *http.Request){
+		simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
+		simRunner.PauseContext.SetState(simulator.StateRunning)
+		fmt.Println("Resume sim")
+		w.WriteHeader(http.StatusOK)
+}
+
 

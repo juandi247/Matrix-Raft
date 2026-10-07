@@ -3,7 +3,8 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"simba/sse"
+	"simba/simulator"
+	"github.com/google/uuid"
 )
 
 
@@ -14,15 +15,28 @@ type httpServer struct {
 	// RequestTimeout time
 
 }
+
+type SimulatorSessionManager struct{
+	SimulatorSessions map[uuid.UUID]*simulator.SimulationRunner
+}
 //TODO: aca agregar el manager con los datos que va a tener, de pronto el mapa de eventos para cada sesion porque se debe pasar a los handlers
 func NewHttpServer(port string, isProd bool, certfile, keyfile string) *httpServer {
-	eventchannelTmp:= make(chan sse.SseEvent, 100)
+
+	SimSessionManager:= &SimulatorSessionManager{
+		SimulatorSessions: make(map[uuid.UUID]*simulator.SimulationRunner),
+	}
 	mux := http.NewServeMux()
 	// we register it as wildcard
 	mux.Handle("/", homePage())
 	mux.Handle("/simulation", simulationPage())
-	mux.Handle("/startsim", startSimulation(eventchannelTmp) )
-	mux.Handle("/events", sseEventsHandler(eventchannelTmp) )
+	mux.Handle("/configsim", configureSimulation(SimSessionManager) )
+
+	//handlers that have the middleware 
+	mux.Handle("/events", simulationUidCheckMiddleware(sseEventsHandler, SimSessionManager) )
+	mux.Handle("/startsim", simulationUidCheckMiddleware(startSimulation, SimSessionManager) )
+	mux.Handle("/pausesim", simulationUidCheckMiddleware(pauseSimulation, SimSessionManager) )
+	mux.Handle("/resumesim", simulationUidCheckMiddleware(resumeSimulation, SimSessionManager) )
+	// mux.Handle("/resumesim", startSimulation(SimSessionManager) )
 	//TODO: Chcekear esto porque esta suiper mal asi tan directo
 	mux.Handle("/js/sim-events.js", serveStaticFiles())
 
