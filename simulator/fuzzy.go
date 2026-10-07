@@ -46,7 +46,7 @@ var FuzzyConfigMap = map[FuzzyLevel]FuzzyConfig{
 	},
 }
 
-func FuzzyConfiguration(seed int64, fuzzyLevel FuzzyLevel) (FuzzyConfig) {
+func NewFuzzyConfiguration(seed int64, fuzzyLevel FuzzyLevel) (FuzzyConfig) {
 
 	source := rand.NewSource(seed)
 	rand := rand.New(source)

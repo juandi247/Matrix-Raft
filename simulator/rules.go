@@ -1,6 +1,11 @@
 package simulator
 
-import "simba/newraft"
+import (
+	"fmt"
+	"simba/newraft"
+	"slices"
+	"sort"
+)
 
 /*
 This file will contian all the checks and rules given by RAFT algorithm such as:
@@ -14,6 +19,12 @@ wait until the end to check that all the servers contain the same data.
 
 At the end the check will take all the CONFIRMED Entries, and check with the current leader, that will contain that one.
 */
+
+
+func checkInvariants(nodeList []*newraft.Node){
+	checkSplitBrain(nodeList)
+	checkCommitedEntries(nodeList)
+}
 
 func checkSplitBrain(nodeList []*newraft.Node){
 	var biggestTerm int
@@ -32,9 +43,47 @@ func checkSplitBrain(nodeList []*newraft.Node){
 }
 
 
-//aca chekear las comited entries, del ultimo leader, con las del resto de logs. tomando cada log de cada server follower
-//tomamos ese valor y las entradas hasta ahi, deben ser igual que las del lider, el lider edberia tener el commitIndex siempre mayor o igual al del log dec ada follower
+//TODO: esto esta mal, deberia ser mucho mejor pero bue
 func checkCommitedEntries(nodeList []*newraft.Node){
+	//ordenar los nodos de forma que queden en orden ascendente por log size 
+	//comparar siempre el menor con el siguiente cada dato del log, si hay algo distinto PARAR
+	newList:= nodeList
+
+	sort.Slice(newList, func(i, j int) bool {return newList[i].CommitIndex < newList[j].CommitIndex})
+
+
+
+	for i, currNode:=range newList{
+		if i==0{
+			continue
+		}
+
+
+
+		prevNode:= newList[i-1]	
+		minCommitIndex:= min(currNode.CommitIndex, prevNode.CommitIndex)
+
 	
+		if minCommitIndex == 0 {
+			continue
+		}
+
+		currNodeCommitedLog:= currNode.Log[:minCommitIndex+1]
+		prevNodeCommitedLog:= currNode.Log[:minCommitIndex+1]
+
+
+
+		equeal:= slices.Equal(currNodeCommitedLog, prevNodeCommitedLog)
+
+		if !equeal{
+			fmt.Println("noodos: ", currNode.Id, " y : ", prevNode.Id, "no coindicen")
+			panic("logs no matchean sus datos cuando y fueron comiteados, raro")
+		}
+
+		
+	}
+
 
 }
+
+

@@ -14,6 +14,7 @@ type SimNetwork struct {
 	TimeAdapter  adapters.TimeAdapter
 	IdCounter int //id counter for the messages to be deliverd
 	EventChan chan sse.SseEvent
+	ShouldPublishEvent bool
 	simClient SimClient
 }
 
@@ -22,14 +23,12 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 
 	events:= []sse.SimMessage{}
 
-	fmt.Printf("we are going to put in the queue %v messages \n\n", len(messages))
 	for _, message := range messages {
 		var delayTicks int64
 		var lost bool
 		lost, delayTicks = s.FuzzyConfig.RandomizeNetwork()
 
 
-		fmt.Println("ReceiverID: ", message.ReceiverId, "deliveryTick: ", s.TimeAdapter.Now()+delayTicks)
 		//TODO: there should be a tracker or something for the later UI that indicates that a message was LOST
 
 
@@ -49,7 +48,8 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 
 
 	if len(events)!=0{
-		s.EventChan <- sse.NewSimulationMessagesPushed(events)
+		PublishEvent(s.ShouldPublishEvent, s.EventChan,sse.NewSimulationMessagesPushed(events))
+		// s.EventChan <- sse.NewSimulationMessagesPushed(events)
 	}
 	// s.printQueueData()
 }

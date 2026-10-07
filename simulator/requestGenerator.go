@@ -92,7 +92,6 @@ delivered. Si me llega una resupest ade ue lalguno de esos delivered, no fue ent
 lo intento d nuevo. pero despues
 */
 func (sm *SimClient) handleIncomingMessage(msg sse.SimMessage){
-	fmt.Println("LLEGO ALGO AL CLIENTE: ")
 
 	if msg.Message.Type!=newraft.MsgLeaderCheck{
 		panic("llego algo invlaido al cliente")
@@ -113,7 +112,6 @@ func (sm *SimClient) handleIncomingMessage(msg sse.SimMessage){
 	}
 	//set the payload id as the leader when w recieve this.
 	sm.CachedLeaderId = payload.LeaderId
-	fmt.Println("el leaderID supustamente ahora seria: ", payload.LeaderId)
 
 }
 

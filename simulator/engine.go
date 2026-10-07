@@ -6,25 +6,50 @@ import (
 	"simba/newraft"
 	"simba/sse"
 	"strconv"
+	"sync"
 	"time"
 )
  
+const (
+    StateRunning = iota
+    StatePaused
+)
+
+type Wctx struct {
+    Mu    sync.Mutex
+    State int
+}
+
+func (w *Wctx) SetState(state int) {
+    w.Mu.Lock()
+    defer w.Mu.Unlock()
+    w.State = state
+}
+
+func (w *Wctx) GetState() int {
+    w.Mu.Lock()
+    defer w.Mu.Unlock()
+    return w.State
+}
+
 type SimulationRunner struct {
 	Time               *SimTime
 	Network            *SimNetwork
 	FuzzyProbabilities FuzzyConfig
-	Port               string
-	IsHttps            bool
-	LeaderId 	int
+	ShouldPublishEvents bool
+	EventChannel chan sse.SseEvent
+	PauseContext Wctx  
 }
 
-func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
+
+func (s *SimulationRunner) Start() {
 
 	// Config for the simulated Time struct
 	s.Time.Tick = 0
 	s.Network.IdCounter = 0	
-	s.Network.EventChan = eventChan
+	s.Network.EventChan = s.EventChannel
 	s.Network.simClient = SimClient{CachedLeaderId: ""}
+	s.Network.ShouldPublishEvent = s.ShouldPublishEvents
 
 	// Config for the simulated Network struct
 	s.Network.TimeAdapter = s.Time
@@ -39,44 +64,56 @@ func (s *SimulationRunner) Start(eventChan chan sse.SseEvent) {
 	nodeList := initializeNodes(s.FuzzyProbabilities)
 
 	for _ , node := range nodeList{
-		eventChan <-sse.NewNodeStateUpdateEvent(node)
+		PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewNodeStateUpdateEvent(node))
+		// s.EventChannel <-sse.NewNodeStateUpdateEvent(node)
 	}
 
-	//requests:= GenerateRequests(s.FuzzyProbabilities.rand)
+	s.PauseContext= Wctx{}
+
 
 	fmt.Println("Configuration finished. Starting loop")
-	// Engine Loop of execution
 	for s.Time.Now() <= maxTicks {
+	
 
-		// advance 1 tick
+		switch state:= s.PauseContext.GetState(); state{
+
+		case StatePaused: 
+			time.Sleep(300 * time.Millisecond)
+
+		default: 
+
+		//SIMULATION ENGINE
 		s.Time.Advance(TickFrequency)
-		eventChan <- sse.NewTickAdvanceEvent(int(s.Time.Now()))
+		fmt.Println("Tick: ", s.Time.Now())
+
+		PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewTickAdvanceEvent(int(s.Time.Now())))
 
 
-		fmt.Printf("Starting tick:  %v \n", s.Time.Now())
 		//crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
 
-		updateNodeTimers(nodeList, eventChan)
+		updateNodeTimers(nodeList, s.EventChannel, s.ShouldPublishEvents)
 
 		//handleComeBackToLiveNode(nodeList, s.Time.Now())
 
 		handleTimeout(nodeList, s.Network)
+		checkInvariants(nodeList)
 
 		//NOTE: handles the  client re1uests, esto podria ir en una funcoin extra
 		req:= s.Network.simClient.generateClientRequest(int(s.Network.TimeAdapter.Now()), s.Network.FuzzyConfig.rand)
 		if req!=nil{
-			fmt.Println("ENVIANDO nueva ENTRY")
-		s.Network.SendMessage(req)
+			s.Network.SendMessage(req)
 		}
 
 		//this is ONLY to read the queue and put the messages into the inbox. No logic of delivering messages to any node here.
 		if s.Network.messageQueue.Len() > 0 {
-			readMessagesToInbox(s.Network, nodeList, eventChan)
+			readMessagesToInbox(s.Network, nodeList, s.EventChannel, s.ShouldPublishEvents)
 		}
 
 		time.Sleep(200* time.Millisecond)
 
-		
+		}
+
+
 	}
 }
 
@@ -141,7 +178,7 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 			CurrTerm: 0,
 			VotedFor: "",
 			Log: []newraft.Entry{
-				newraft.Entry{Term: 0, Value: "SKIPPER", Index: 0},
+				{Term: 0, Value: "SKIPPER", Index: 0},
 			},
 
 			CommitIndex: 0,
@@ -176,19 +213,20 @@ func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, current
 			continue
 		}
 		node.SimulatorFields.Alive = false
-		fmt.Println("crashed node: ", node.Id)
 		//TODO: uncomment thisss
 		//node.SimulatorFields.ComeBackToLiveTick = currentTick + comeBackToLiveTick
 	}
 }
  
 
-func updateNodeTimers(nodeList []*newraft.Node, eventChan chan sse.SseEvent) {
+func updateNodeTimers(nodeList []*newraft.Node, eventChan chan sse.SseEvent, shouldPublishEvent bool) {
 	for _, node := range nodeList {
 		switch node.CurrentRole {
 		case newraft.FOLLOWER:
 			node.SimulatorFields.HeartbeatTimeoutCounter--
-			eventChan <- sse.NewHeartbeatTimeoutEvent(node.Id, node.SimulatorFields.HeartbeatTimeoutCounter)
+			
+			PublishEvent(shouldPublishEvent, eventChan, sse.NewHeartbeatTimeoutEvent(node.Id,node.SimulatorFields.HeartbeatTimeoutCounter))
+			// eventChan <- sse.NewHeartbeatTimeoutEvent(node.Id, node.SimulatorFields.HeartbeatTimeoutCounter)
 			
 		case newraft.CANDIDATE:
 			node.SimulatorFields.ElectionTimeoutCounter--
@@ -215,7 +253,7 @@ func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64) {
 	}
 }*/
 
-func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan chan sse.SseEvent) {
+func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan chan sse.SseEvent, shouldPublishEvent bool) {
 
 	if sn.messageQueue.Len()<=0{
 		panic("wtf this hsuold be bigger than cero")
@@ -268,11 +306,16 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 			if node.Id == receiverNodeId{
 
 				if node.Id == "Node5" || node.Id == "Node1"{
-				fmt.Printf("%v VA a hacer HANLDE EVENT de mensaje desde: %v con deliveryTick: %v\n", node.Id, msg.Message.SenderId, msg.DeliveryTick)
 				}
-				eventChan <- sse.NewSimulationMessageDelivered(msg.Id)
+				PublishEvent(shouldPublishEvent, eventChan, sse.NewSimulationMessageDelivered(msg.Id))
+				// eventChan <- sse.NewSimulationMessageDelivered(msg.Id)
 				responseMessages:=node.HandleEvent(msg.Message)
-				eventChan <- sse.NewNodeStateUpdateEvent(node)
+
+				//NOTE: checks split brain and that stuff
+				checkInvariants(nodeList)
+
+				PublishEvent(shouldPublishEvent, eventChan, sse.NewNodeStateUpdateEvent(node))
+				// eventChan <- sse.NewNodeStateUpdateEvent(node)
 
 				sn.SendMessage(responseMessages)
 				break
@@ -312,7 +355,6 @@ func handleTimeout(nodeList []*newraft.Node, sm *SimNetwork) {
 
 		case newraft.FOLLOWER:
 			if node.SimulatorFields.HeartbeatTimeoutCounter <= 0 {
-				fmt.Printf("we reached a timeout follower id: %v, this should trigger a election \n", node.Id)
 				node.SimulatorFields.HeartbeatTimeoutCounter = node.HeartbeatTimeout
 				sm.SendTimeout(newraft.Message{
 					Type: newraft.MsgHeartbeatTimeout,
@@ -323,7 +365,6 @@ func handleTimeout(nodeList []*newraft.Node, sm *SimNetwork) {
 
 		case newraft.CANDIDATE:
 			if node.SimulatorFields.ElectionTimeoutCounter <= 0 {
-				fmt.Println("we reached a timeout candidate")
 				node.SimulatorFields.ElectionTimeoutCounter = node.ElectionTimeout
 				sm.SendTimeout(newraft.Message{
 					Type: newraft.MsgElectionTimeout,
@@ -334,7 +375,6 @@ func handleTimeout(nodeList []*newraft.Node, sm *SimNetwork) {
 
 		case newraft.LEADER:
 			if node.SimulatorFields.SendAppendEntriesTimeoutCounter <= 0 {
-				fmt.Println("we reached a timeout leader")
 				node.SimulatorFields.SendAppendEntriesTimeoutCounter = node.SendAppendEntriesTimeout
 				sm.SendTimeout(newraft.Message{
 					Type: newraft.MsgSendAppendEntriesTimeout,
@@ -342,5 +382,11 @@ func handleTimeout(nodeList []*newraft.Node, sm *SimNetwork) {
 				})
 			}
 		}
+	}
+}
+
+func  PublishEvent(shouldPublishEvent bool,eventChan chan sse.SseEvent, event sse.SseEvent){
+	if shouldPublishEvent{
+		eventChan<- event
 	}
 }
