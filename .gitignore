@@ -3,3 +3,6 @@ lint-report.xml
 .scannerwork*
 coverage.out
 sonar-config.properties
+.ds_store
+.ds 
+cls
