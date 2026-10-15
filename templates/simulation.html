@@ -22,6 +22,8 @@
   --color-accent: #8093ff;
   --color-accent-text: #0b0d10;
   --color-error: #f08a90;
+  --color-down: #e0646b;
+  --color-ok: #7fd69a;
   --color-candidate: #f0b45a;
 
   /* raft roles */
@@ -160,8 +162,8 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .node[data-role="0"] { --role-color: var(--role-follower); }
 .node[data-role="1"] { --role-color: var(--role-candidate); }
 .node[data-role="2"] { --role-color: var(--role-leader); }
-.node__circle { width: 5rem; height: 5rem; margin: 0 auto; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--role-color); background: color-mix(in srgb, var(--role-color) 16%, var(--color-bg)); font: 500 0.8rem/1 var(--font-mono); transition: border-color 0.5s ease, background-color 0.5s ease; }
-.node__info { margin-top: var(--space-1); padding: var(--space-1) 0.75rem; display: grid; gap: var(--space-1); background: var(--color-surface); border: var(--border); border-radius: var(--radius); }
+.node__circle { position: relative; width: 5rem; height: 5rem; margin: 0 auto; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--role-color); background: color-mix(in srgb, var(--role-color) 16%, var(--color-bg)); font: 500 0.8rem/1 var(--font-mono); transition: border-color 0.5s ease, background-color 0.5s ease, opacity 0.6s ease; }
+.node__info { margin-top: var(--space-1); padding: var(--space-1) 0.75rem; display: grid; gap: var(--space-1); background: var(--color-surface); border: var(--border); border-radius: var(--radius); transition: opacity 0.6s ease; }
 .node__role { margin: 0; text-align: center; font: 600 var(--text-base)/1.2 var(--font-mono); color: var(--role-color); transition: color 0.5s ease; }
 .node__stats { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center; font-family: var(--font-mono); }
 .node__stats dt { font-size: 0.7rem; color: var(--color-muted); }
@@ -173,6 +175,15 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .packets { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .packet { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--msg); box-shadow: 0 0 10px var(--msg); transition-property: transform; transition-timing-function: linear; will-change: transform; }
 
+/* a message that reached a node that is down */
+.packet--lost { background: var(--color-down); box-shadow: 0 0 12px var(--color-down); }
+.lost-mark { position: absolute; left: 0; top: 0; font: 700 14px/1 var(--font-mono); color: var(--color-down); pointer-events: none; }
+
+/* pause / resume */
+#pause-btn:disabled { opacity: 0.5; cursor: default; }
+#pause-btn[aria-busy="true"] { cursor: progress; }
+.run__tag { color: var(--color-candidate); }
+
 /* next / match index panel (same look as the full log) */
 .indexpanel { width: min(26rem, calc(100vw - var(--net-width) - 3rem)); }
 
@@ -180,6 +191,13 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .node__last { margin: 0; font: 400 0.8rem/1.3 var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
 .node__more { padding: 0.3rem 0.5rem; background: transparent; color: var(--color-text); border: var(--border); border-radius: var(--radius); font: 500 0.75rem/1.2 var(--font-mono); cursor: pointer; }
 .node__more:hover { border-color: var(--color-accent); }
+
+/* a node that is down: grey and dimmed with a red badge. The data stays readable */
+.node[data-down] { --role-color: var(--color-muted); }
+.node[data-down] .node__circle { opacity: 0.7; }
+.node[data-down] .node__circle::after { content: "✕"; position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-down); color: var(--color-bg); font: 700 12px/22px var(--font-mono); text-align: center; }
+.node[data-down] .node__info { opacity: 0.55; }
+.node[data-down] .node__role::after { content: " · down"; color: var(--color-down); }
 
 /* full log: a panel above the page. The simulation keeps running behind it */
 .fulllog { position: fixed; z-index: 6; top: 50%; left: calc((100vw - var(--net-width)) / 2); transform: translate(-50%, -50%); width: min(34rem, calc(100vw - var(--net-width) - 3rem)); max-height: 70vh; display: flex; flex-direction: column; background: var(--color-surface); border: 1px solid var(--color-device-line); border-radius: var(--radius); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65); }
@@ -330,6 +348,8 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
     <div class="run__bar">
       <span>tick <b id="tick">0</b></span>
       <span>seed <b id="run-seed"></b></span>
+      <button class="button button--ghost" id="pause-btn" type="button" disabled>Pause</button>
+      <span class="run__tag" id="paused-tag" hidden>paused</span>
       <span id="run-status" style="color: var(--color-error);" hidden></span>
       <div class="seg" id="net-mode" role="group" aria-label="Network messages">
         <button type="button" data-mode="explicit" aria-pressed="true">Explicit</button>
@@ -416,6 +436,7 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
 <script>
 const $ = (id) => document.getElementById(id);
 const form = $('form');
+let SimUid = null; // returned by /configsim. /events, /startsim, /pausesim and /resumesim take it as ?uid=
 
 // Suggested seeds fill the input
 document.querySelectorAll('[data-seed]').forEach((b) =>
@@ -468,8 +489,11 @@ function setStatus(text) {
   $('run-status').hidden = false;
 }
 
+function clearStatus() {
+  $('run-status').hidden = true;
+}
+
 async function startSimulation(seed) {
-  let uid;
 
   // 1. Create/configure the simulation and get its UID
   try {
@@ -487,7 +511,7 @@ async function startSimulation(seed) {
 
     const data = await response.json();
     SimUid = data.Uid;
-		console.log("DATAAAA: ", data)
+    console.log("DATAAAA: ", data)
 
   } catch (err) {
     console.error(err);
@@ -510,46 +534,60 @@ async function startSimulation(seed) {
     console.error('SSE connection error:', err);
   };
 
-	console.log("VAMOS A LLAMAR START SIM")
-  // 3. Start the simulation.
+  console.log("VAMOS A LLAMAR START SIM")
+  // 3. Start the simulation. The uid goes as a parameter, like in /events.
   // We don't need to wait for the response.
-  fetch('/startsim', {
+  fetch(`/startsim?uid=${encodeURIComponent(SimUid)}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ SimUid }),
   }).catch((err) => {
     console.error(err);
     setStatus('Could not start the simulation.');
   });
+
+  $('pause-btn').disabled = false; // pause is available once the simulation was started
 }
 
 
-// When the countdown ends: start the simulation (Go handler) and listen to its events
-async function startSimulationOLDDD(seed) {
+// ---------- Pause / resume ----------
+// One button. While a request is in flight the button is locked, so a slow answer cannot
+// turn into a pile of repeated clicks. If the server does not answer in 5 s, it unlocks.
+let paused = false;
+let pauseBusy = false;
+
+async function togglePause() {
+  if (pauseBusy || !SimUid) return;
+
+  const action = paused ? 'resume' : 'pause';
+  const url = action === 'pause' ? '/pausesim' : '/resumesim';
+  const btn = $('pause-btn');
+
+  pauseBusy = true;
+  btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
+  btn.textContent = action === 'pause' ? 'Pausing…' : 'Resuming…';
+
   try {
-    await fetch('/startsim', {
+    const response = await fetch(`${url}?uid=${encodeURIComponent(SimUid)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seed }),
+      signal: AbortSignal.timeout(5000),
     });
+    if (!response.ok) throw new Error(`${action} failed: ${response.status}`);
+
+    paused = action === 'pause';
+    clearStatus();
   } catch (err) {
     console.error(err);
-    setStatus('Could not start the simulation.');
-    return;
+    setStatus(`Could not ${action} the simulation.`);
+  } finally {
+    pauseBusy = false;
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    btn.textContent = paused ? 'Resume' : 'Pause';
+    $('paused-tag').hidden = !paused;
   }
-
-  // SSE from the /events handler. Every message is a JSON event.
-  const events = new EventSource('/events');
-  events.onmessage = (e) => {
-    try {
-      handleSimulatorEvent(JSON.parse(e.data));
-    } catch (err) {
-      console.error('Could not parse SSE event:', e.data, err);
-    }
-  };
 }
+
+$('pause-btn').addEventListener('click', togglePause);
 </script>
 </body>
 </html>

@@ -32,7 +32,7 @@ var FuzzyConfigMap = map[FuzzyLevel]FuzzyConfig{
 	LOW: {
 		LatencyProb:     0.01,
 		MessageLostProb: 0.001,
-		NodeCrashProb: 0.001,
+		NodeCrashProb: 0.0001,
 	},
 	MEDIUM: {
 		LatencyProb:     0.05,

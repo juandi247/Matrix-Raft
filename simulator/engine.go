@@ -2,18 +2,32 @@ package simulator
 
 import (
 	"container/heap"
-	"fmt"
 	"simba/newraft"
 	"simba/sse"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
  
+
+type SleepMode int
+
+const (
+    Null SleepMode=0
+    Low SleepMode= 100
+    Medium SleepMode= 500
+    High SleepMode= 900
+)
+
 const (
     StateRunning = iota
     StatePaused
+    StateStopDefinetly
 )
+
+
 
 type Wctx struct {
     Mu    sync.Mutex
@@ -33,12 +47,14 @@ func (w *Wctx) GetState() int {
 }
 
 type SimulationRunner struct {
+	Uid uuid.UUID
 	Time               *SimTime
 	Network            *SimNetwork
 	FuzzyProbabilities FuzzyConfig
 	ShouldPublishEvents bool
 	EventChannel chan sse.SseEvent
 	PauseContext Wctx  
+	SleepingTime SleepMode
 }
 
 
@@ -71,29 +87,32 @@ func (s *SimulationRunner) Start() {
 	s.PauseContext= Wctx{}
 
 
-	fmt.Println("Configuration finished. Starting loop")
+	defer PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewSimulationStopped())
+
 	for s.Time.Now() <= maxTicks {
 	
-
 		switch state:= s.PauseContext.GetState(); state{
 
 		case StatePaused: 
 			time.Sleep(300 * time.Millisecond)
 
-		default: 
+		case StateStopDefinetly: 
+			return
+		
+		case StateRunning: 
 
 		//SIMULATION ENGINE
 		s.Time.Advance(TickFrequency)
-		fmt.Println("Tick: ", s.Time.Now())
+		// fmt.Println("Tick: ", s.Time.Now())
 
 		PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewTickAdvanceEvent(int(s.Time.Now())))
 
 
-		//crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now())
+		crashNodes(nodeList, s.FuzzyProbabilities, s.Time.Now(), s.ShouldPublishEvents, s.EventChannel)
 
 		updateNodeTimers(nodeList, s.EventChannel, s.ShouldPublishEvents)
 
-		//handleComeBackToLiveNode(nodeList, s.Time.Now())
+		handleComeBackToLiveNode(nodeList, s.Time.Now(), s.ShouldPublishEvents, s.EventChannel)
 
 		handleTimeout(nodeList, s.Network)
 		checkInvariants(nodeList)
@@ -109,12 +128,13 @@ func (s *SimulationRunner) Start() {
 			readMessagesToInbox(s.Network, nodeList, s.EventChannel, s.ShouldPublishEvents)
 		}
 
-		time.Sleep(200* time.Millisecond)
+		time.Sleep(time.Duration(s.SleepingTime) * time.Millisecond)
 
+		default: 
+			panic("not valid state for running sim")
 		}
-
-
 	}
+
 }
 
 func (s *SimulationRunner) Stop() {
@@ -204,17 +224,23 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 
 }
 
-func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, currentTick int64) {
+func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, currentTick int64, shouldPublish bool, eventChan chan sse.SseEvent) {
 	for _, node := range nodeList {
-		//TODO: uncomment this because its not ACTIVE
-		//shouldCrash, comeBackToLiveTick := fuzzyProbabilites.determineCrashingProbabily()
-		shouldCrash:=false
+		shouldCrash, comeBackToLifeTick := fuzzyProbabilites.determineCrashingProbabily()
+
+		//NOTE: temporal
+		if currentTick ==  150 && node.Id == "Node1"{
+			shouldCrash = true
+			comeBackToLifeTick = 270
+		}
+
+		// shouldCrash:=false
 		if !shouldCrash {
 			continue
 		}
 		node.SimulatorFields.Alive = false
-		//TODO: uncomment thisss
-		//node.SimulatorFields.ComeBackToLiveTick = currentTick + comeBackToLiveTick
+		node.SimulatorFields.ComeBackToLife = int(currentTick + comeBackToLifeTick)
+		PublishEvent(shouldPublish, eventChan, sse.NewNodeCrashedEvent(node.Id))
 	}
 }
  
@@ -239,19 +265,27 @@ func updateNodeTimers(nodeList []*newraft.Node, eventChan chan sse.SseEvent, sho
 	}
 	
 }
-/*
-func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64) {
+
+func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64,shouldPublish bool, eventChan chan sse.SseEvent ) {
 
 	for _, node := range nodeList {
-		if node.SimulatorFields.ComeBackToLiveTick <= currentTick && !node.SimulatorFields.Alive {
+		if int64(node.SimulatorFields.ComeBackToLife) <= currentTick && !node.SimulatorFields.Alive {
 			node.SimulatorFields.Alive = true
 			//This is to reestart the values of timeouts, so that the node starts Cleanly from scratch.
-			node.SimulatorFields.LeaderHeartbeatCounter = node.LeaderHeartbeat
-			node.SimulatorFields.Timeoutcounter = node.Timeout
+			node.SimulatorFields.HeartbeatTimeoutCounter = node.HeartbeatTimeout
+			node.SimulatorFields.SendAppendEntriesTimeoutCounter = node.SendAppendEntriesTimeout
+			node.CurrentRole = newraft.FOLLOWER
+			//term, voted for, and LOG should be there, because they were writen to disk
+			
+			node.InitializeLeaderIndexes()
+			node.CommitIndex = 0
+			node.LastApplied = 0
+			PublishEvent(shouldPublish, eventChan, sse.NewNodeBackToLifeEvent(node.Id))
+
 		}
 
 	}
-}*/
+}
 
 func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan chan sse.SseEvent, shouldPublishEvent bool) {
 
@@ -308,7 +342,13 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 				if node.Id == "Node5" || node.Id == "Node1"{
 				}
 				PublishEvent(shouldPublishEvent, eventChan, sse.NewSimulationMessageDelivered(msg.Id))
-				// eventChan <- sse.NewSimulationMessageDelivered(msg.Id)
+
+				//If the node is not alive, the message will not be delivered, and he wonrt act upon them
+				if !node.SimulatorFields.Alive{
+					// fmt.Printf("MESSAGE IGNORED, %s DOWN \n", node.Id)
+					return
+				}
+
 				responseMessages:=node.HandleEvent(msg.Message)
 
 				//NOTE: checks split brain and that stuff

@@ -37,6 +37,7 @@ const SimulatorEventName = Object.freeze({
 function handleSimulatorEvent(event) {
   switch (event.EventType) {
     case SimulatorEventType.TickAdvance:
+			console.log("tick event")
       $('tick').textContent = event.Payload.Tick;
       onTick(event.Payload.Tick);               // remember the tick and the real time between ticks
       deliverDueMessages(event.Payload.Tick);   // arrivals first
@@ -44,11 +45,11 @@ function handleSimulatorEvent(event) {
       break;
 
     case SimulatorEventType.NodeCrashed:
-      console.log('NodeCrashed event:', event.Payload);
+      handleNodeCrashed(event.Payload);
       break;
 
     case SimulatorEventType.NodeBackToLife:
-      console.log('NodeBackToLife event:', event.Payload);
+      handleNodeBackToLife(event.Payload);
       break;
 
     case SimulatorEventType.HeartbeatTimeout:
@@ -57,14 +58,17 @@ function handleSimulatorEvent(event) {
 
     case SimulatorEventType.NodeStateUpdate:
       renderNodeState(event.Payload);
+			console.log("node state event")
       break;
 
     case SimulatorEventType.NewMessage:
       handleNewMessage(event.Payload);
+			console.log("new message  event")
       break;
 
     case SimulatorEventType.MessageDelivered:
       removeMessageById(event.Payload.MessageId ?? event.Payload.Id);
+			console.log("deliver message  event")
       break;
 
     default:
@@ -102,7 +106,7 @@ const ROLE_LEADER = 2;
 // Node1, Node2, ..., Node10 in natural order. The maps always show in the same order.
 const byNodeName = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
-const nodeViews = new Map(); // NodeId -> { el, fields, last, log, nextIndex, matchIndex }
+const nodeViews = new Map(); // NodeId -> { el, fields, last, log, nextIndex, matchIndex, down }
 
 // Nodes sit on the corners of a regular polygon (triangle for 3, pentagon for 5, ...).
 // Positions are percentages of the .stage: center (cx, cy) and radii (rx, ry).
@@ -128,7 +132,7 @@ function createNodeView(id) {
   el.dataset.id = id;
   el.dataset.role = '0'; // every node starts as follower
   el.innerHTML = `
-    <div class="node__circle"><span data-f="id"></span></div>
+    <div class="node__circle" data-f="ball"><span data-f="id"></span></div>
     <div class="node__info">
       <p class="node__role" data-f="role"></p>
       <dl class="node__stats">
@@ -157,7 +161,7 @@ function createNodeView(id) {
   container.insertBefore(el, next || null);
   layoutNodes(); // a new node changes the polygon
 
-  return { el, fields, last: {}, log: [], nextIndex: {}, matchIndex: {} };
+  return { el, fields, last: {}, log: [], nextIndex: {}, matchIndex: {}, down: false };
 }
 
 // Runs apply(value) only if the value differs from the last one rendered.
@@ -342,6 +346,108 @@ function openIndexPanel(id) {
 function closeIndexPanel() {
   openIndexId = null;
   netById('indexpanel').hidden = true;
+}
+
+
+
+
+
+
+
+// ======================= CRASH / BACK TO LIFE =======================
+// A node that is down looks dead (grey, dimmed, with a red badge) but its data stays readable.
+// payload: { NodeId }
+
+function prefersReducedMotion() {
+  return matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function isNodeDown(id) {
+  return nodeViews.get(id)?.down === true;
+}
+
+function handleNodeCrashed(payload) {
+  const view = nodeViews.get(payload.NodeId);
+  if (!view) { console.warn('NodeCrashed for unknown node:', payload.NodeId); return; }
+  if (view.down) return;
+
+  view.down = true;
+  view.el.dataset.down = 'true'; // the CSS does the dimming
+  if (!prefersReducedMotion()) crashEffect(view.fields.ball);
+}
+
+function handleNodeBackToLife(payload) {
+  const view = nodeViews.get(payload.NodeId);
+  if (!view) { console.warn('NodeBackToLife for unknown node:', payload.NodeId); return; }
+  if (!view.down) return;
+
+  view.down = false;
+  delete view.el.dataset.down;
+  if (!prefersReducedMotion()) reviveEffect(view.fields.ball);
+}
+
+// It shakes, a red ring spreads, and it settles into the dimmed state.
+function crashEffect(ball) {
+  const red = cssVar('--color-down');
+  ball.animate([
+    { transform: 'translateX(0)', boxShadow: `0 0 0 0 ${red}` },
+    { transform: 'translateX(-7px)', offset: 0.12 },
+    { transform: 'translateX(7px)', offset: 0.26 },
+    { transform: 'translateX(-5px)', offset: 0.4 },
+    { transform: 'translateX(4px)', offset: 0.54 },
+    { transform: 'translateX(0) scale(0.9)', offset: 0.75 },
+    { transform: 'translateX(0) scale(1)', boxShadow: '0 0 0 22px transparent' },
+  ], { duration: 700, easing: 'ease-out' });
+}
+
+// It lights up and pops, with a green ring.
+function reviveEffect(ball) {
+  const green = cssVar('--color-ok');
+  ball.animate([
+    { transform: 'scale(0.85)', filter: 'brightness(0.6)', boxShadow: `0 0 0 0 ${green}` },
+    { transform: 'scale(1.15)', filter: 'brightness(1.6)', offset: 0.45 },
+    { transform: 'scale(1)', filter: 'brightness(1)', boxShadow: '0 0 0 20px transparent' },
+  ], { duration: 650, easing: 'ease-out' });
+}
+
+// The message reached a node that is down: the dot turns red, a small ✕ fades out
+// and the node flashes red. The node does not jump, because it received nothing.
+function messageLost(item, packet) {
+  const ball = nodeBall(item.to);
+  const path = packetPath(item);
+
+  if (packet) {
+    packet.style.transition = 'background-color 150ms, box-shadow 150ms';
+    packet.classList.add('packet--lost');
+    setTimeout(() => packet.remove(), 260);
+  }
+  if (prefersReducedMotion()) return;
+
+  if (ball) {
+    const red = cssVar('--color-down');
+    ball.animate([
+      { boxShadow: `0 0 0 0 ${red}` },
+      { boxShadow: `0 0 0 10px ${red}`, offset: 0.3 },
+      { boxShadow: '0 0 0 18px transparent' },
+    ], { duration: 650, easing: 'ease-out' });
+  }
+  if (path) lostMark(path.x1, path.y1);
+}
+
+function lostMark(x, y) {
+  const mark = netEl('i', 'lost-mark', '✕');
+  const at = (dy, scale) => `translate(${x}px, ${y + dy}px) translate(-50%, -50%) scale(${scale})`;
+  mark.style.transform = at(0, 1);
+  netById('packets').append(mark);
+  mark.animate([
+    { opacity: 1, transform: at(0, 0.6) },
+    { opacity: 1, transform: at(-6, 1.3), offset: 0.3 },
+    { opacity: 0, transform: at(-22, 1) },
+  ], { duration: 800, easing: 'ease-out' }).finished.then(() => mark.remove(), () => mark.remove());
 }
 
 
@@ -646,16 +752,16 @@ function deliverMessage(item) {
   arrive(item);
 }
 
-// The dot reaches the receiver: it disappears and the receiver bounces.
+// The dot reaches the receiver: it disappears and the receiver bounces (or, if the receiver
+// is down, the message is lost).
 function arrive(item) {
   const el = item.packet;
   const ball = nodeBall(item.to);
 
   const done = () => {
+    if (isNodeDown(item.to)) { messageLost(item, el); return; } // the receiver is down
     if (el) el.remove();
-    if (ball && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      receiveBounce(ball, typeColor(item.type));
-    }
+    if (ball && !prefersReducedMotion()) receiveBounce(ball, typeColor(item.type));
   };
 
   if (el && item.progress < 1) {   // delivered before it got there: finish the trip quickly
