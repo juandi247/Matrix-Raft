@@ -16,8 +16,6 @@ const fuzzyLevel simulator.FuzzyLevel = simulator.LOW
 func main() {
 
 
-
-
 	mode:=	flag.String("mode","V", "Usage: Pass as value:\n V (for visualization mode) \n M (matrix mode) \n R (real implementation)\n Default value is V")
 
 	//NOTE: Only for Visualizatoin MODE OR REAL MODE
@@ -104,14 +102,13 @@ func StartMatrixMode(seed int64, maxTicks int64) error{
 	fuzzyConfig := simulator.NewFuzzyConfiguration(seed, fuzzyLevel)
 
 
-
-
 	sim:= &simulator.SimulationRunner{
 			Time:               &simulator.SimTime{},
 			Network:            &simulator.SimNetwork{},
 			FuzzyProbabilities: fuzzyConfig,
 			EventChannel: nil,
 			ShouldPublishEvents: false,
+			SleepingTime: simulator.Null,
 		}
 
 	sim.Start()
