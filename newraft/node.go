@@ -63,6 +63,7 @@ type SimulatorFields struct{
 	ElectionTimeoutCounter int  //candidate
 	SendAppendEntriesTimeoutCounter int //leader
 	Alive bool
+	ComeBackToLife int
 }
 
 
@@ -72,7 +73,7 @@ type SimulatorFields struct{
 
 /* LAST LOG INDEX del leader o de mi current user, +1 , y claro esto deberia estar es en el propio */
 /*toma el last logIndex  */
-func (n *Node) initializeLeaderIndexes() {
+func (n *Node) InitializeLeaderIndexes() {
 
 	lastLogIndex := len(n.Log) - 1
 
@@ -160,7 +161,7 @@ func (n *Node) transitionRole(target Role) []Message {
 			panic("Assertion, can not pass to leader, from FOLLOWER")
 		}
 
-		n.initializeLeaderIndexes()
+		n.InitializeLeaderIndexes()
 		n.CurrentRole = LEADER
 		n.CurrentLeader = n.Id
 		return n.SendAppendEntries()
