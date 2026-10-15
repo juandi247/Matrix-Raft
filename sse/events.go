@@ -19,6 +19,7 @@ const (
 	NodeStateUpdate
 	SimulationMessagePushed //pushed means it was pushed into the network event array
 	SimulationMessageDelivered //message was delivered to the node
+	SimulationStopped
 )
 
 
@@ -48,11 +49,15 @@ func NewNodeCrashedEvent(nodeId string) NodeCrashedEvent{
 
 
 
-
 type NodeBackToLifeEvent struct {
 	NodeId string
 }
 
+func NewNodeBackToLifeEvent(nodeId string) NodeBackToLifeEvent{
+	return NodeBackToLifeEvent{
+		NodeId:nodeId,
+	}
+}
 
 
 
@@ -136,6 +141,14 @@ func NewSimulationMessageDelivered(messageId int) SimulationMessageDeliveredEven
 
 
 
+type SimulationStoppedEvent struct {
+}
+
+func NewSimulationStopped() SimulationStoppedEvent{
+	return SimulationStoppedEvent{
+	}
+}
+
 
 //boilerplate to implement the SSE interface
 func (t TickAdvanceEvent) GetEventType() SimulatorEventType{ return TickAdvance}
@@ -145,5 +158,6 @@ func (t NodeBackToLifeEvent) GetEventType() SimulatorEventType{ return NodeBackT
 func (t NodeStateUpdateEvent) GetEventType() SimulatorEventType{ return NodeStateUpdate}
 func (t SimulationMessagePushedEvent) GetEventType() SimulatorEventType{ return SimulationMessagePushed}
 func (t SimulationMessageDeliveredEvent) GetEventType() SimulatorEventType{ return SimulationMessageDelivered}
+func (t SimulationStoppedEvent) GetEventType() SimulatorEventType{ return SimulationStopped}
 
 
