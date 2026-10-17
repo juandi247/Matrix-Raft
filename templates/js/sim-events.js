@@ -514,7 +514,7 @@ function typeColor(type) {
 function readMessage(sim) {
   const msg = sim.Message ?? {};
   return {
-    id: msg.MessageId ?? sim.Id, // SimMessage.Id arrives as 0, MessageId is unique
+    id: msg.SequenceNumber ?? sim.SequenceNumber, // SimMessage.Id arrives as 0, MessageId is unique
     tick: sim.DeliveryTick,
     type: msg.Type ?? msg.MessageType,
     from: msg.SenderId ?? msg.From ?? msg.Sender ?? '',
