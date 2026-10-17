@@ -110,8 +110,8 @@ func NewNodeStateUpdateEvent(node *newraft.Node) NodeStateUpdateEvent{
 
 type SimMessage struct {
 	Index int
-	Id int
-	DeliveryTick int
+	SequenceNumber int
+	DeliveryTick uint64
 	Message      newraft.Message
 }
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"simba/server"
 	"simba/simulator"
+	"strings"
+	"sync"
 )
 
 const matrixMode bool = true
@@ -28,7 +30,7 @@ func main() {
 
 	//NOTE: Only for Simulator MODE
 		seed:=	flag.Int64("seed", 0, "Default seed is 1234")
-		maxTicks:=flag.Int64("maxticks", 100_000, "Max ticks for the simulation to run")
+		maxTicks:=flag.Uint64("maxticks", 100_000, "Max ticks for the simulation to run")
 		//TODO: config for the fuzzy probabitlies
 		//fuzzyLevel:=flag.String("fuzzylevel", "LOW", "")
 
@@ -37,7 +39,9 @@ func main() {
 
 	flag.Parse()
 
-	switch *mode{
+	s:=*mode
+	s = strings.ToUpper(s)
+	switch s{
 
 	case "V":
 		err:=	StartVisualizationMode(*port, *isHttps, *certFilePath, *keyFilePath)
@@ -59,7 +63,6 @@ func main() {
 		fmt.Println("Mode not recognized, please provide V (visualization mode), M (matix mode) or R (for real mode)")
 		return
 	}
-	select{}
 }
 
 
@@ -69,6 +72,11 @@ func StartVisualizationMode(port int, isHttps bool, certFilePath, keyFilePath st
 	fmt.Println("visualizaton mode")
 	fmt.Println("https: ", isHttps)
 
+	var wg sync.WaitGroup
+
+
+	wg.Add(1)
+
 		if isHttps && (certFilePath == "" || keyFilePath ==""){
 			return fmt.Errorf("certfile or keyfile not provided for https")
 		}
@@ -77,12 +85,16 @@ func StartVisualizationMode(port int, isHttps bool, certFilePath, keyFilePath st
 		httpServer:=server.NewHttpServer(fmt.Sprintf(":%d",port), isHttps, certFilePath, keyFilePath)
 
 		go func(){
+			defer wg.Done()
 			err:= httpServer.StartServer()
 			if err!=nil{
 				fmt.Println("error starting server: ", err)
 				return
 			}
+			
 		}()
+
+		wg.Wait()
 
 		return nil
 
@@ -91,7 +103,7 @@ func StartVisualizationMode(port int, isHttps bool, certFilePath, keyFilePath st
 
 
 
-func StartMatrixMode(seed int64, maxTicks int64) error{
+func StartMatrixMode(seed int64, maxTicks uint64) error{
 
 	if seed==0{
 		return fmt.Errorf("Seed not provided, please provide the -seed flag with a random int64")
@@ -109,6 +121,7 @@ func StartMatrixMode(seed int64, maxTicks int64) error{
 			EventChannel: nil,
 			ShouldPublishEvents: false,
 			SleepingTime: simulator.Null,
+		MaxTicks: uint64(maxTicks) ,
 		}
 
 	sim.Start()

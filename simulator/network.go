@@ -24,9 +24,7 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 	events:= []sse.SimMessage{}
 
 	for _, message := range messages {
-		var delayTicks int64
-		var lost bool
-		lost, delayTicks = s.FuzzyConfig.RandomizeNetwork()
+		lost, delayTicks := s.FuzzyConfig.RandomizeNetwork()
 
 
 		//TODO: there should be a tracker or something for the later UI that indicates that a message was LOST
@@ -35,8 +33,8 @@ func (s *SimNetwork) SendMessage(messages []newraft.Message) {
 		s.IdCounter++
 		if !lost {
 			simMessage := &sse.SimMessage{
-				Id: s.IdCounter,
-				DeliveryTick: int(s.TimeAdapter.Now() + delayTicks),
+				SequenceNumber: s.IdCounter,
+				DeliveryTick: s.TimeAdapter.Now() + uint64(delayTicks),
 				Message:      message,
 			}
 			heap.Push(s.messageQueue, simMessage)
@@ -76,11 +74,12 @@ func (s *SimNetwork) printQueueData(){
 func (s *SimNetwork) SendTimeout(msg newraft.Message){
 	s.IdCounter++
 	simMessage:= &sse.SimMessage{
-		DeliveryTick: int(s.TimeAdapter.Now()) - 1,
+		SequenceNumber: s.IdCounter,
+		DeliveryTick: s.TimeAdapter.Now() - 1,
 		Message: msg,
 		
 	}
-	s.messageQueue.Push(simMessage)
+	heap.Push(s.messageQueue, simMessage)
 }
 
 
@@ -100,7 +99,7 @@ func (pq PriorityQueue) Len() int { return len(pq) }
 
 func (pq PriorityQueue) Less(i, j int) bool {
 	if pq[i].DeliveryTick == pq[j].DeliveryTick {
-		return pq[i].Index < pq[j].Index
+		return pq[i].SequenceNumber < pq[j].SequenceNumber
 	}
 	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
 	return pq[i].DeliveryTick < pq[j].DeliveryTick

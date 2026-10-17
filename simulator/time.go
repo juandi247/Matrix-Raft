@@ -1,15 +1,15 @@
 package simulator
 
 type SimTime struct {
-	Tick int64
+	Tick uint64
 }
 
-func (st *SimTime) Now() int64 {
+func (st *SimTime) Now() uint64 {
 	return st.Tick
 }
-func (st *SimTime) Advance(delta int64) {
+func (st *SimTime) Advance(delta uint64) {
 	st.Tick += delta
 }
-func (st *SimTime) Sleep(int64) {
+func (st *SimTime) Sleep(uint64) {
 }
 

@@ -2,6 +2,7 @@ package simulator
 
 import (
 	"container/heap"
+	"fmt"
 	"simba/newraft"
 	"simba/sse"
 	"strconv"
@@ -55,6 +56,7 @@ type SimulationRunner struct {
 	EventChannel chan sse.SseEvent
 	PauseContext Wctx  
 	SleepingTime SleepMode
+	MaxTicks uint64
 }
 
 
@@ -87,9 +89,15 @@ func (s *SimulationRunner) Start() {
 	s.PauseContext= Wctx{}
 
 
-	defer PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewSimulationStopped())
+	// defer PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewSimulationStopped())
 
-	for s.Time.Now() <= maxTicks {
+	defer func(){
+		fmt.Println("Ended simulation succesfully")
+	 	PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewSimulationStopped())
+
+	}()
+
+	for s.Time.Now() <= s.MaxTicks {
 	
 		switch state:= s.PauseContext.GetState(); state{
 
@@ -100,6 +108,10 @@ func (s *SimulationRunner) Start() {
 			return
 		
 		case StateRunning: 
+
+			if s.Time.Now() % 1000 == 0{
+				fmt.Println("tick: ", s.Time.Now())
+			}
 
 		//SIMULATION ENGINE
 		s.Time.Advance(TickFrequency)
@@ -141,27 +153,31 @@ func (s *SimulationRunner) Stop() {
 }
 
 /* LAST LOG INDEX del leader o de mi current user, +1 , y claro esto deberia estar es en el propio */
-func initializeNextIndex(nodesNumber, id int) map[int]int{
-	mapita:= make(map[int]int, nodesNumber-1)
+func initializeNextIndex(friendsIds []string) map[string]int{
 
-	for i:=1; i<=nodesNumber; i++{
-		if i==id{
-			continue
-		}
-		mapita[i]=1
+	if len(friendsIds) >= newraft.TotalNodes{
+		panic("malll")
+	}
+	mapita:= make(map[string]int, newraft.TotalNodes-1)
+
+
+	for _ , friendId:= range friendsIds{
+		mapita[friendId]=1
 	}
 
 	return mapita
 }
 
-func initializeMatchIndex(nodesNumber, id int) map[int]int{
-	mapita:= make(map[int]int, nodesNumber-1)
 
-	for i:=1; i<=nodesNumber; i++{
-		if i==id{
-			continue
-		}
-		mapita[i]=0
+func initializeMatchIndex(friendsIds []string) map[string]int{
+
+	if len(friendsIds) >= newraft.TotalNodes{
+		panic("malll")
+	}
+	mapita:= make(map[string]int, newraft.TotalNodes-1)
+
+	for _ , friendId:= range friendsIds{
+		mapita[friendId]=0
 	}
 
 	return mapita
@@ -177,16 +193,18 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 
 
 		heartbeatTimeout:= int(generateHeartbeatTimeout(fuzzyProbabilites.rand))
-		//ESTO ES TEMPORALLL!!!
-		if i==1{
-			heartbeatTimeout=2
-		}
+		//TODO: ESTO ES TEMPORALLL!!!
+		// if i==1{
+		// 	heartbeatTimeout=2
+		// }
+		
 		id:= "Node"+strconv.Itoa(i)
+		friendsIds:= buildFriendsIds(newraft.TotalNodes, i)
 
 		nodeList[i-1] = &newraft.Node{
 			Id: id,
 			CurrentRole: newraft.FOLLOWER,
-			OtherNodesId: buildFriendsIds(newraft.TotalNodes, i),
+			OtherNodesId:friendsIds,  
 			CurrentLeader: "",
 
 
@@ -204,9 +222,9 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 			CommitIndex: 0,
 			LastApplied: 0, 
 
-			NextIndex: make(map[string]int),
-			MatchIindex: make(map[string]int), 
-			VotesGranted: make(map[string]int), 
+			NextIndex: initializeNextIndex(friendsIds),
+			MatchIindex: initializeMatchIndex(friendsIds),
+			VotesGranted: initializeMatchIndex(friendsIds),
 
 			//TODO: Simulator fields, que son importantes solo para los ticks de reducir los teimotus nada mas
 			
@@ -224,22 +242,22 @@ func initializeNodes(fuzzyProbabilites FuzzyConfig) []*newraft.Node {
 
 }
 
-func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, currentTick int64, shouldPublish bool, eventChan chan sse.SseEvent) {
+func crashNodes(nodeList []*newraft.Node, fuzzyProbabilites FuzzyConfig, currentTick uint64, shouldPublish bool, eventChan chan sse.SseEvent) {
 	for _, node := range nodeList {
 		shouldCrash, comeBackToLifeTick := fuzzyProbabilites.determineCrashingProbabily()
 
-		//NOTE: temporal
-		if currentTick ==  150 && node.Id == "Node1"{
-			shouldCrash = true
-			comeBackToLifeTick = 270
-		}
+		// //NOTE: temporal
+		// if currentTick ==  150 && node.Id == "Node1"{
+		// 	shouldCrash = true
+		// 	comeBackToLifeTick = 270
+		// }
 
 		// shouldCrash:=false
 		if !shouldCrash {
 			continue
 		}
 		node.SimulatorFields.Alive = false
-		node.SimulatorFields.ComeBackToLife = int(currentTick + comeBackToLifeTick)
+		node.SimulatorFields.ComeBackToLife = int(currentTick + uint64(comeBackToLifeTick))
 		PublishEvent(shouldPublish, eventChan, sse.NewNodeCrashedEvent(node.Id))
 	}
 }
@@ -266,10 +284,10 @@ func updateNodeTimers(nodeList []*newraft.Node, eventChan chan sse.SseEvent, sho
 	
 }
 
-func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick int64,shouldPublish bool, eventChan chan sse.SseEvent ) {
+func handleComeBackToLiveNode(nodeList []*newraft.Node, currentTick uint64,shouldPublish bool, eventChan chan sse.SseEvent ) {
 
 	for _, node := range nodeList {
-		if int64(node.SimulatorFields.ComeBackToLife) <= currentTick && !node.SimulatorFields.Alive {
+		if uint64(node.SimulatorFields.ComeBackToLife) <= currentTick && !node.SimulatorFields.Alive {
 			node.SimulatorFields.Alive = true
 			//This is to reestart the values of timeouts, so that the node starts Cleanly from scratch.
 			node.SimulatorFields.HeartbeatTimeoutCounter = node.HeartbeatTimeout
@@ -293,10 +311,10 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 		panic("wtf this hsuold be bigger than cero")
 	}
 
-	for i:=0; i<sn.messageQueue.Len(); i++{
+	for sn.messageQueue.Len()>0{
 		msg:= sn.messageQueue.Peek()
 		
-		if msg.DeliveryTick > int(sn.TimeAdapter.Now()) {
+		if msg.DeliveryTick > sn.TimeAdapter.Now(){ 
 			return
 		}
 		//ESTE POP Es lo que me jode no?
@@ -332,21 +350,19 @@ func readMessagesToInbox(sn *SimNetwork, nodeList []*newraft.Node, eventChan cha
 		//NOTE: CHECK IF THE MESSAGE GOES BACK TO A CLIENT
 		if receiverNodeId == ClientId{
 			sn.simClient.handleIncomingMessage(*msg)
-			return
+			continue
 		}
 
 		
 		 for _ , node:=range nodeList{
 			if node.Id == receiverNodeId{
 
-				if node.Id == "Node5" || node.Id == "Node1"{
-				}
-				PublishEvent(shouldPublishEvent, eventChan, sse.NewSimulationMessageDelivered(msg.Id))
+				PublishEvent(shouldPublishEvent, eventChan, sse.NewSimulationMessageDelivered(msg.SequenceNumber))
 
 				//If the node is not alive, the message will not be delivered, and he wonrt act upon them
 				if !node.SimulatorFields.Alive{
 					// fmt.Printf("MESSAGE IGNORED, %s DOWN \n", node.Id)
-					return
+					continue
 				}
 
 				responseMessages:=node.HandleEvent(msg.Message)

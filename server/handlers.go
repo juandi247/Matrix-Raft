@@ -118,6 +118,10 @@ func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.
 			FuzzyProbabilities: fuzzyConfig,
 			EventChannel: make(chan sse.SseEvent, 100),
 			ShouldPublishEvents: true,
+			
+			//TODO: DEFAULT FOR NOW this 2
+			SleepingTime: 300,
+			MaxTicks: 1000,
 		}
 
 

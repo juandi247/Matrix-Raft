@@ -12,9 +12,9 @@ type TransportAdapter interface {
 }
 
 type TimeAdapter interface {
-	Now() int64
-	Advance(int64)
-	Sleep(int64)
+	Now() uint64
+	Advance(uint64)
+	Sleep(uint64)
 }
 
 type StorageAdapter interface {

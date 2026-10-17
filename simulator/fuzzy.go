@@ -1,7 +1,6 @@
 package simulator
 
 import (
-	"fmt"
 	"math/rand"
 )
 
@@ -66,9 +65,6 @@ func (fc *FuzzyConfig) determineCrashingProbabily()(bool, int64){
 
 
 	if randomNumber < fc.NodeCrashProb {
-		fmt.Println("rndom number", randomNumber)
-		fmt.Println("crash probablity:", fc.NodeCrashProb)
-		fmt.Println("we crashed the node")
 		comeBackToLiveTick:=  minCrashNodeDowntime + fc.rand.Int63n(maxCrashNodeDowntime - minCrashNodeDowntime + 1)
 		return true, comeBackToLiveTick
 	}
