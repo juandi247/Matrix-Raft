@@ -15,6 +15,10 @@ func (n *Node)HandleCandidateAction(mesage Message) []Message{
 
 	case MsgElectionTimeout:
 		return n.handleElectionTimeout()	
+
+	case MsgAppendEntries: 
+		n.transitionRole(FOLLOWER)
+		return nil
 	}
 
 
@@ -60,7 +64,7 @@ func (n *Node) HandleResponseVote(eventResponse RequestVoteResponseEvent, voterI
 	}
 
 	//we havent REached our goal of votes YET
-	if minQuorumValue(n.VotesGranted) != 1{
+	if minQuorumValue(n.VotesGranted, Quorum) != 1{
 		return nil
 	}
 

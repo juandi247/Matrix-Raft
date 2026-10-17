@@ -1,5 +1,6 @@
 package newraft
 
+import "fmt"
 
 /* ---- METHODS REACTING TO INCOMING EVENTS -------- */
 func (n *Node)HandleLeaderAction(mesage Message) []Message{
@@ -57,11 +58,19 @@ func (n *Node) HandleNewEntry(data string)[]Message{
 
 
 
-func (n *Node) buildAppendEntry(nextIndex int) AppendEntriesEvent{
+func (n *Node) buildAppendEntry(nextIndex int, followerId string) AppendEntriesEvent{
 		prevLogIndex:= nextIndex - 1
 	if prevLogIndex == -1{
 		panic("pvlogInedx es -1, paniccc")
 	}
+		if prevLogIndex >= len(n.Log){
+		fmt.Printf("followerId: %s \n", followerId)
+		fmt.Printf("prevlogIndex: %d, logLength: %v \n", prevLogIndex, len(n.Log))
+		panic("prevlog index is equal to the length of the log")
+
+		}
+
+
 		prevLogTerm:= n.Log[prevLogIndex].Term
 		
 		entries:= []Entry{}
@@ -100,17 +109,20 @@ func (n *Node) SendAppendEntries() []Message{
 	messages:= []Message{}
 
 
-	for followerId, nextIndex:=range n.NextIndex{
+
+
+	for _ , followerId := range n.OtherNodesId{
+		nextIndex:= n.NextIndex[followerId]
 		messages = append(messages, Message{
 			SenderId: n.Id,
 			ReceiverId: followerId ,
 			Term: n.CurrTerm,
 			Type: MsgAppendEntries,
-			Payload: n.buildAppendEntry(nextIndex),
+			Payload: n.buildAppendEntry(nextIndex, followerId),
 
 		})
-	}
 
+	}
 
 	return messages
 
@@ -131,7 +143,7 @@ func (n *Node) HandleAppendEntriesResponse(requestEvent AppendEntriesResponseEve
 			Term: n.CurrTerm,
 			ReceiverId: followerId ,
 			Type: MsgAppendEntries,
-			Payload: n.buildAppendEntry(n.NextIndex[followerId]),
+			Payload: n.buildAppendEntry(n.NextIndex[followerId], followerId),
 
 		})
 	}
@@ -141,7 +153,7 @@ func (n *Node) HandleAppendEntriesResponse(requestEvent AppendEntriesResponseEve
 	n.MatchIindex[followerId] = max(n.MatchIindex[followerId], requestEvent.MatchIndex)
 	n.NextIndex[followerId] = n.MatchIindex[followerId]+1
 
-	n.CommitIndex = max(n.CommitIndex, minQuorumValue(n.MatchIindex))
+	n.CommitIndex = max(n.CommitIndex, minQuorumValue(n.MatchIindex, Quorum))
 
 
 	//TODO: checkear last applied, pero hasta ahi estamos BIEN MELOS

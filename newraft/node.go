@@ -1,7 +1,6 @@
 package newraft
 
 import (
-	"fmt"
 	"slices"
 )
 
@@ -98,7 +97,6 @@ func (n *Node) HandleEvent(message Message) []Message {
 
 	//Ignore the message, we can also send back to him, to update the term, This will also check that is not a timeout message (needed because timeouts send term also)
 	if message.Term < n.CurrTerm && !isTimeoutMessage(message.Type){
-		fmt.Println("mensaje ignorado por TERM")
 		return nil
 	}
 
@@ -107,6 +105,7 @@ func (n *Node) HandleEvent(message Message) []Message {
 		n.updateTerm(message.Term)
 		n.transitionRole(FOLLOWER)
 	}
+
 
 	switch n.CurrentRole {
 
@@ -175,9 +174,9 @@ func (n *Node) transitionRole(target Role) []Message {
 	return nil
 }
 //data map comes from the matchindex or the voteGranted map, where the string is the ID (which we dont care), and the value is the value for the quorum check
-func minQuorumValue(dataMap map[string]int) int {
+func minQuorumValue(dataMap map[string]int, quorum int) int {
 	//here we dont need to check the slice because there isnt even a valid number of votes
-	if len(dataMap) < Quorum{
+	if len(dataMap) < quorum - 1{
 		return 0
 	}
 
@@ -189,7 +188,7 @@ func minQuorumValue(dataMap map[string]int) int {
 	}
 	slices.Sort(slice)
 
-	idx:= Quorum - 1
+	idx:= quorum - 1
 	return slice[idx]
 
 }
