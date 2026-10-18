@@ -107,7 +107,6 @@ func (sm *SimClient) handleIncomingMessage(msg sse.SimMessage){
 
 
 	if payload.LeaderId==""{
-		fmt.Println("llego empty del random al clinte")
 		return
 	}
 	//set the payload id as the leader when w recieve this.

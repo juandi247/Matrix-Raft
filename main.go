@@ -18,6 +18,7 @@ const fuzzyLevel simulator.FuzzyLevel = simulator.LOW
 func main() {
 
 
+	//NOTE: common flags
 	mode:=	flag.String("mode","V", "Usage: Pass as value:\n V (for visualization mode) \n M (matrix mode) \n R (real implementation)\n Default value is V")
 
 	//NOTE: Only for Visualizatoin MODE OR REAL MODE
@@ -31,8 +32,7 @@ func main() {
 	//NOTE: Only for Simulator MODE
 		seed:=	flag.Int64("seed", 0, "Default seed is 1234")
 		maxTicks:=flag.Uint64("maxticks", 100_000, "Max ticks for the simulation to run")
-		//TODO: config for the fuzzy probabitlies
-		//fuzzyLevel:=flag.String("fuzzylevel", "LOW", "")
+		fuzzyLevelFlag:=flag.String("fuzzylevel", "low", "Pass the value of fault inyection or fuzzy level. Should be: low, medium or high. By default is set on low ")
 
 
 
@@ -50,7 +50,7 @@ func main() {
 			return
 		}
 	case "M":
-		err:=StartMatrixMode(*seed, *maxTicks)
+		err:=StartMatrixMode(*seed, *maxTicks, *fuzzyLevelFlag)
 		if err!=nil{
 			fmt.Println("Error found: ", err)
 			return
@@ -103,13 +103,23 @@ func StartVisualizationMode(port int, isHttps bool, certFilePath, keyFilePath st
 
 
 
-func StartMatrixMode(seed int64, maxTicks uint64) error{
+func StartMatrixMode(seed int64, maxTicks uint64, fuzzyLevelFlag string) error{
 
 	if seed==0{
 		return fmt.Errorf("Seed not provided, please provide the -seed flag with a random int64")
 	}
 
 	fmt.Println("Matrix mode")
+
+	
+	switch fuzzyLevelFlag{
+	case "low", "medium", "high":
+		//valid so we just continue
+	default:
+		return fmt.Errorf("Invalid fuzzy Level. Should be low, medium, or high")
+
+	}
+
 
 	fuzzyConfig := simulator.NewFuzzyConfiguration(seed, fuzzyLevel)
 

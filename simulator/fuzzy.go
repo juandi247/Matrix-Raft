@@ -5,12 +5,12 @@ import (
 )
 
 
-type FuzzyLevel int
+type FuzzyLevel string
 
 const (
-	LOW FuzzyLevel = iota 
-	MEDIUM
-	HIGH
+	LOW FuzzyLevel = "low" 
+	MEDIUM FuzzyLevel = "medium"
+	HIGH FuzzyLevel = "high"
 )
 
 type FuzzyConfig struct {

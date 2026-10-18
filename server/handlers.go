@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 )
-const fuzzyLevel simulator.FuzzyLevel = simulator.LOW
 
 
 
@@ -44,6 +43,7 @@ func checkMap(sm *SimulatorSessionManager) http.HandlerFunc{
 
 type SimulationConfig struct{
 	Seed int `json:"seed"`
+	FuzzLevel simulator.FuzzyLevel 
 
 }
 
@@ -101,7 +101,7 @@ func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.
 		}
 
 
-		fuzzyConfig := simulator.NewFuzzyConfiguration(int64(simConfig.Seed), fuzzyLevel)
+		fuzzyConfig := simulator.NewFuzzyConfiguration(int64(simConfig.Seed), simConfig.FuzzLevel)
 
 
 		uidGenerated, err:= uuid.NewUUID()
@@ -121,7 +121,7 @@ func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.
 			ShouldPublishEvents: true,
 			
 			//TODO: DEFAULT FOR NOW this 2
-			SleepingTime: 0,
+			SleepingTime: 300,
 			MaxTicks: 2000,
 		}
 
