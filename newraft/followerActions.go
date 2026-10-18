@@ -86,8 +86,21 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 	//HAPPY PATH
 	responseEvent.Succes = true
 
-	for index, entry:= range requestEvent.Entries{
-		if entry.Index > len(n.Log) - 1{
+	var newMatchIndex int
+
+	if len(requestEvent.Entries) == 0 {
+		newMatchIndex = requestEvent.PrevLogIndex
+	}else{
+		newMatchIndex = requestEvent.Entries[len(requestEvent.Entries)- 1].Index
+	}
+
+	for index, incomingEntry:= range requestEvent.Entries{
+
+		//the entry is inside the LOG, and should be reeplaced
+		if incomingEntry.Index <= len(n.Log) - 1{
+			n.Log[incomingEntry.Index].Value = incomingEntry.Value
+			n.Log[incomingEntry.Index].Term = incomingEntry.Term
+		}else{
 			n.Log = append(n.Log, requestEvent.Entries[index:]...)
 			break
 		}
@@ -96,7 +109,7 @@ func (n *Node) HandleAppendEntries(requestEvent AppendEntriesEvent) []Message{
 
 
 
-	responseEvent.MatchIndex = len(n.Log)-1
+	responseEvent.MatchIndex = newMatchIndex
 
 	if requestEvent.LeaderCommitIndex > n.CommitIndex{
 		n.CommitIndex = min(requestEvent.LeaderCommitIndex, len(n.Log) -1)

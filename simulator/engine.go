@@ -109,13 +109,12 @@ func (s *SimulationRunner) Start() {
 		
 		case StateRunning: 
 
-			if s.Time.Now() % 1000 == 0{
-				fmt.Println("tick: ", s.Time.Now())
-			}
 
 		//SIMULATION ENGINE
 		s.Time.Advance(TickFrequency)
-		// fmt.Println("Tick: ", s.Time.Now())
+			if s.Time.Now() %100_000 ==0{
+		fmt.Println("Tick: ", s.Time.Now())
+			}
 
 		PublishEvent(s.ShouldPublishEvents, s.EventChannel, sse.NewTickAdvanceEvent(int(s.Time.Now())))
 
@@ -141,6 +140,7 @@ func (s *SimulationRunner) Start() {
 		}
 
 		time.Sleep(time.Duration(s.SleepingTime) * time.Millisecond)
+
 
 		default: 
 			panic("not valid state for running sim")

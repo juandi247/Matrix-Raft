@@ -34,6 +34,7 @@ return func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+
 func checkMap(sm *SimulatorSessionManager) http.HandlerFunc{
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "We have %d simulations running", len(sm.simulatorSessions))
@@ -120,8 +121,8 @@ func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.
 			ShouldPublishEvents: true,
 			
 			//TODO: DEFAULT FOR NOW this 2
-			SleepingTime: 300,
-			MaxTicks: 1000,
+			SleepingTime: 0,
+			MaxTicks: 2000,
 		}
 
 
