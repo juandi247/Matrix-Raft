@@ -26,6 +26,11 @@
   --color-ok: #7fd69a;
   --color-candidate: #f0b45a;
 
+  /* fuzz levels */
+  --fuzz-low: var(--color-ok);
+  --fuzz-medium: var(--color-candidate);
+  --fuzz-high: var(--color-down);
+
   /* raft roles */
   --role-follower: #4fb0a5;
   --role-candidate: var(--color-candidate);
@@ -113,14 +118,25 @@ a { color: inherit; }
 .input { width: 100%; max-width: 20rem; padding: 0.7rem 0.9rem; background: var(--color-bg); color: var(--color-text); border: var(--border); border-radius: var(--radius); font: 500 var(--text-base)/1 var(--font-mono); }
 .input:focus { outline: none; border-color: var(--color-accent); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: start; }
 
 fieldset { border: 0; margin: 0; padding: 0; }
+legend { padding: 0; }
 .choices { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .choice { display: block; padding: var(--space-2); background: var(--color-surface); border: var(--border); border-radius: var(--radius); cursor: pointer; }
 .choice:has(input:checked) { border-color: var(--color-accent); }
 .choice:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .choice input { accent-color: var(--color-accent); margin-right: var(--space-1); }
 .choice strong { font-weight: 600; }
+.choices--3 { grid-template-columns: repeat(3, 1fr); }
+
+/* fuzz level: one color per level */
+[data-level="low"] { --level: var(--fuzz-low); }
+[data-level="medium"] { --level: var(--fuzz-medium); }
+[data-level="high"] { --level: var(--fuzz-high); }
+.choice[data-level] strong { color: var(--level); }
+.choice[data-level]:has(input:checked) { border-color: var(--level); }
+.level-dot { display: inline-block; width: 0.7rem; height: 0.7rem; margin: 0 0.4rem 0 0.1rem; border-radius: 50%; background: var(--level); }
 .choice span { display: block; margin-top: 0.25rem; padding-left: 1.6rem; }
 
 /* countdown: only the background and the number */
@@ -144,6 +160,17 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .seg button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-accent-text); }
 .legend { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: 0.8rem; }
 .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.run__bar .fuzz-tag { padding: 0.05rem 0.55rem; border: 1px solid var(--level, var(--color-border)); border-radius: 999px; color: var(--level, var(--color-text)); font-size: 0.75rem; font-weight: 500; }
+
+/* time accelerator */
+.run__time { position: relative; display: flex; align-items: center; gap: var(--space-1); }
+.seg--plain { margin-left: 0; }
+.seg button:disabled { opacity: 0.5; cursor: default; }
+.help-btn { width: 1.5rem; height: 1.5rem; padding: 0; border: var(--border); border-radius: 50%; background: transparent; color: var(--color-muted); font: 600 0.8rem/1 var(--font-mono); cursor: pointer; }
+.help-btn:hover, .help-btn[aria-expanded="true"] { color: var(--color-text); border-color: var(--color-accent); }
+.help-pop { position: absolute; top: calc(100% + 0.5rem); left: 0; z-index: 7; width: min(30rem, calc(100vw - var(--net-width) - 3rem)); padding: var(--space-2); background: var(--color-surface); border: 1px solid var(--color-device-line); border-radius: var(--radius); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65); font: 400 var(--text-sm)/1.55 var(--font-body); color: var(--color-text); }
+.help-pop > * + * { margin-top: var(--space-1); }
+.help-pop strong { font-weight: 600; }
 
 /* message types (data-type is the Go MessageType number) */
 [data-type="0"] { --msg: var(--msg-new-entry); }
@@ -266,7 +293,7 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
 
 @media (max-width: 860px) {
   .rows > div { grid-template-columns: 1fr; gap: 0; }
-  .choices { grid-template-columns: 1fr; }
+  .choices, .choices--3, .fields-row { grid-template-columns: 1fr; }
   .is-running main.container { padding-right: var(--space-3); }
   .stage { width: 100%; aspect-ratio: auto; }
   .nodes { position: static; display: grid; gap: var(--space-3); }
@@ -306,32 +333,46 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
     </section>
 
     <form id="form" class="section stack-lg" novalidate>
-      <div class="field">
-        <label class="field__label" for="seed">Seed</label>
-        <input class="input" id="seed" name="seed" type="text" inputmode="numeric" autocomplete="off" value="42" aria-describedby="seed-help seed-error">
-        <p class="muted small" id="seed-help">An integer from 0 to 4294967295 (32 bits). It drives all the randomness in the run.</p>
-        <p class="small" id="seed-error" role="alert" style="color: var(--color-error);" hidden></p>
-        <div class="chips" aria-label="Suggested seeds">
-          <button class="button button--ghost" type="button" data-seed="1">1</button>
-          <button class="button button--ghost" type="button" data-seed="42">42</button>
-          <button class="button button--ghost" type="button" data-seed="1337">1337</button>
-          <button class="button button--ghost" type="button" data-seed="20240229">20240229</button>
-          <button class="button button--ghost" type="button" data-seed="3735928559">3735928559</button>
+      <div class="fields-row">
+        <div class="field">
+          <label class="field__label" for="seed">Seed</label>
+          <input class="input" id="seed" name="seed" type="text" inputmode="numeric" autocomplete="off" value="42" aria-describedby="seed-help seed-error">
+          <p class="muted small" id="seed-help">An integer from 0 to 4294967295 (32 bits). It drives all the randomness in the run.</p>
+          <p class="small" id="seed-error" role="alert" style="color: var(--color-error);" hidden></p>
+          <div class="chips" aria-label="Suggested seeds">
+            <button class="button button--ghost" type="button" data-seed="1">1</button>
+            <button class="button button--ghost" type="button" data-seed="42">42</button>
+            <button class="button button--ghost" type="button" data-seed="1337">1337</button>
+            <button class="button button--ghost" type="button" data-seed="20240229">20240229</button>
+            <button class="button button--ghost" type="button" data-seed="3735928559">3735928559</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="maxticks">Max ticks</label>
+          <input class="input" id="maxticks" name="maxticks" type="text" inputmode="numeric" autocomplete="off" value="1000" aria-describedby="maxticks-help maxticks-error">
+          <p class="muted small" id="maxticks-help">How long the simulation runs, in ticks. From 1 to 50,000. Default: 1,000.</p>
+          <p class="small" id="maxticks-error" role="alert" style="color: var(--color-error);" hidden></p>
         </div>
       </div>
 
       <fieldset class="field">
-        <legend class="field__label" style="margin-bottom: var(--space-1);">View</legend>
-        <div class="choices">
-          <label class="choice">
-            <strong><input type="radio" name="view" value="simple" checked>Simple</strong>
-            <span class="muted small">The nodes with their basic state, such as role, term and commit index.</span>
+        <legend class="field__label" style="margin-bottom: var(--space-1);">Fuzz level</legend>
+        <div class="choices choices--3">
+          <label class="choice" data-level="low">
+            <strong><input type="radio" name="fuzz" value="low" checked><i class="level-dot"></i>Low</strong>
+            <span class="muted small">The most reliable network. Messages take less time to arrive and a node is less likely to crash.</span>
           </label>
-          <label class="choice">
-            <strong><input type="radio" name="view" value="detailed">Detailed</strong>
-            <span class="muted small">The same nodes with their full internal state, updating as the simulation runs.</span>
+          <label class="choice" data-level="medium">
+            <strong><input type="radio" name="fuzz" value="medium"><i class="level-dot"></i>Medium</strong>
+            <span class="muted small">A less reliable network. Messages take longer to arrive and nodes are more likely to crash.</span>
+          </label>
+          <label class="choice" data-level="high">
+            <strong><input type="radio" name="fuzz" value="high"><i class="level-dot"></i>High</strong>
+            <span class="muted small">The least reliable network. Messages take the longest to arrive and nodes are the most likely to crash.</span>
           </label>
         </div>
+        <p class="muted small" style="margin-top: var(--space-1);">Fuzzing injects faults into the simulation. These values cannot be changed once it starts.</p>
       </fieldset>
 
       <p><button class="button" type="submit">Start</button></p>
@@ -348,9 +389,26 @@ body[data-net-mode="explicit"] .only-hidden { display: none !important; }
     <div class="run__bar">
       <span>tick <b id="tick">0</b></span>
       <span>seed <b id="run-seed"></b></span>
+      <span>max ticks <b id="run-maxticks"></b></span>
+      <span>fuzz <b class="fuzz-tag" id="run-fuzz"></b></span>
       <button class="button button--ghost" id="pause-btn" type="button" disabled>Pause</button>
       <span class="run__tag" id="paused-tag" hidden>paused</span>
       <span id="run-status" style="color: var(--color-error);" hidden></span>
+      <div class="run__time">
+        <span>time</span>
+        <div class="seg seg--plain" id="time-mode" role="group" aria-label="Time accelerator">
+          <button type="button" data-time="slow" aria-pressed="false" disabled>0.5×</button>
+          <button type="button" data-time="normal" aria-pressed="true" disabled>Normal</button>
+          <button type="button" data-time="fast" aria-pressed="false" disabled>2×</button>
+        </div>
+        <button class="help-btn" id="time-help-btn" type="button" aria-expanded="false" aria-controls="time-help" aria-label="What is the time accelerator?">?</button>
+        <div class="help-pop" id="time-help" role="note" hidden>
+          <p><strong>Time accelerator</strong></p>
+          <p>A deterministic simulation does not run on real time. It runs on a simulated clock, which is just a counter. That is one of the big advantages of deterministic simulation testing: time can be accelerated, so you can test the equivalent of hours or days of a real cluster in a fraction of that time. The only limit is how fast your CPU can run the simulation.</p>
+          <p><strong>0.5×</strong> is slower, to follow every message. <strong>Normal</strong> is the default. <strong>2×</strong> runs twice as fast.</p>
+          <p class="muted">Changing the speed does not affect determinism: the same seed always produces the same run.</p>
+        </div>
+      </div>
       <div class="seg" id="net-mode" role="group" aria-label="Network messages">
         <button type="button" data-mode="explicit" aria-pressed="true">Explicit</button>
         <button type="button" data-mode="hidden" aria-pressed="false">Hidden</button>
@@ -457,7 +515,18 @@ form.addEventListener('submit', (e) => {
     $('seed').focus();
     return;
   }
-  const view = form.elements.view.value; // will be used by the nodes UI later
+  // Max ticks: an integer from 1 to 50,000
+  const maxRaw = $('maxticks').value.trim();
+  const maxTicks = Number(maxRaw);
+  const maxValid = /^\d+$/.test(maxRaw) && maxTicks >= 1 && maxTicks <= 50000;
+  $('maxticks-error').hidden = maxValid;
+  if (!maxValid) {
+    $('maxticks-error').textContent = 'Enter an integer from 1 to 50,000.';
+    $('maxticks').focus();
+    return;
+  }
+
+  const fuzzLevel = form.elements.fuzz.value; // always 'low', 'medium' or 'high'
 
   document.body.classList.add('is-running');
   $('setup').hidden = true;
@@ -480,7 +549,10 @@ form.addEventListener('submit', (e) => {
     $('countdown').hidden = true;
     $('run').hidden = false;
     $('run-seed').textContent = seed;
-    startSimulation(seed);
+    $('run-maxticks').textContent = maxTicks.toLocaleString('en-US');
+    $('run-fuzz').textContent = fuzzLevel;
+    $('run-fuzz').dataset.level = fuzzLevel; // the color comes from the level
+    startSimulation({ seed, fuzzLevel, maxTicks });
   }, 1000);
 });
 
@@ -493,7 +565,7 @@ function clearStatus() {
   $('run-status').hidden = true;
 }
 
-async function startSimulation(seed) {
+async function startSimulation(config) {
 
   // 1. Create/configure the simulation and get its UID
   try {
@@ -502,7 +574,7 @@ async function startSimulation(seed) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ seed }),
+      body: JSON.stringify({ seed: config.seed, FuzzLevel: config.fuzzLevel, MaxTicks: config.maxTicks }),
     });
 
     if (!response.ok) {
@@ -545,6 +617,7 @@ async function startSimulation(seed) {
   });
 
   $('pause-btn').disabled = false; // pause is available once the simulation was started
+  document.querySelectorAll('#time-mode button').forEach((b) => { b.disabled = false; }); // and so is the time accelerator
 }
 
 
@@ -588,6 +661,60 @@ async function togglePause() {
 }
 
 $('pause-btn').addEventListener('click', togglePause);
+
+
+// ---------- Time accelerator ----------
+// Three modes, sent as strings: 'slow' (0.5x), 'normal' and 'fast' (2x). Same lock as pause:
+// while the request is in flight the buttons are locked.
+let timeMode = 'normal';
+let timeBusy = false;
+
+async function changeTime(mode) {
+  if (timeBusy || !SimUid || mode === timeMode) return;
+
+  const buttons = document.querySelectorAll('#time-mode button');
+  timeBusy = true;
+  buttons.forEach((b) => { b.disabled = true; });
+  $('time-mode').setAttribute('aria-busy', 'true');
+
+  try {
+    const response = await fetch(`/changetime?uid=${encodeURIComponent(SimUid)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ TimeMode: mode }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`changetime failed: ${response.status}`);
+
+    timeMode = mode;
+    clearStatus();
+  } catch (err) {
+    console.error(err);
+    setStatus('Could not change the speed.');
+  } finally {
+    timeBusy = false;
+    $('time-mode').removeAttribute('aria-busy');
+    buttons.forEach((b) => {
+      b.disabled = false;
+      b.setAttribute('aria-pressed', String(b.dataset.time === timeMode)); // the active mode stays marked
+    });
+  }
+}
+
+document.querySelectorAll('#time-mode button').forEach((b) =>
+  b.addEventListener('click', () => changeTime(b.dataset.time))
+);
+
+// "?" explains the time accelerator. Closes with a second click, outside click or Escape.
+function setTimeHelp(open) {
+  $('time-help').hidden = !open;
+  $('time-help-btn').setAttribute('aria-expanded', String(open));
+}
+$('time-help-btn').addEventListener('click', () => setTimeHelp($('time-help').hidden));
+document.addEventListener('click', (e) => { if (!e.target.closest('.run__time')) setTimeHelp(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setTimeHelp(false); });
 </script>
 </body>
 </html>
