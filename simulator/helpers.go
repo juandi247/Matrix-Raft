@@ -1,7 +1,6 @@
 package simulator
 
 import (
-	"fmt"
 	"math/rand"
 	"strconv"
 )
@@ -22,7 +21,6 @@ func buildFriendsIds(numberOfFriends int, nodeIndex int) []string{
 
 func generateHeartbeatTimeout(rng *rand.Rand) uint32 {
 	t:= uint32(MinHeartBeatTimeout + rng.Intn(MaxHeartBeatTimeout-MinHeartBeatTimeout+1))
-	fmt.Println("timeout generado es: ", t) 
 	return t
 }
 

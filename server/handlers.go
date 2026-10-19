@@ -44,6 +44,7 @@ func checkMap(sm *SimulatorSessionManager) http.HandlerFunc{
 type SimulationConfig struct{
 	Seed int `json:"seed"`
 	FuzzLevel simulator.FuzzyLevel 
+	MaxTicks uint64
 
 }
 
@@ -122,7 +123,7 @@ func configureSimulation(simulatorSessionManager *SimulatorSessionManager) http.
 			
 			//TODO: DEFAULT FOR NOW this 2
 			SleepingTime: 300,
-			MaxTicks: 2000,
+			MaxTicks: simConfig.MaxTicks,
 		}
 
 
@@ -230,21 +231,40 @@ func resumeSimulation(w http.ResponseWriter, r *http.Request){
 
 
 func changeSimulationSleep(w http.ResponseWriter, r *http.Request){
-		simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
+
+	simRunner:= r.Context().Value(SimRunnerSessionKey).(*simulator.SimulationRunner)
 
 	var changeApi struct{
-		SleepMode simulator.SleepMode
+		TimeMode string
 
 	}
 
 	err:= json.NewDecoder(r.Body).Decode(&changeApi)
 
+
+	var sleepingTime simulator.SleepMode
+
+	//use the contrary, because timemode slow, is a high SLEEP
+	switch changeApi.TimeMode{
+	case "slow":
+		sleepingTime = simulator.SleepHigh
+	case "normal":
+		sleepingTime = simulator.SleepMedium
+	case "fast":
+		sleepingTime = simulator.SleepSlow
+
+	default: 
+		w.WriteHeader(http.StatusBadGateway)
+	return 
+	}
+
 	if err!=nil{
 		fmt.Println("error decoding json")
 	}
-	//TODO: change this, esto esta como feo xd
-		simRunner.SleepingTime = changeApi.SleepMode
-		w.WriteHeader(http.StatusOK)
+
+	//TODO: this is kinda ugly but okay
+	simRunner.SleepingTime = sleepingTime
+	w.WriteHeader(http.StatusOK)
 }
 
 

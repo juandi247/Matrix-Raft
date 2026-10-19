@@ -17,9 +17,9 @@ type SleepMode int
 
 const (
     Null SleepMode=0
-    Low SleepMode= 100
-    Medium SleepMode= 500
-    High SleepMode= 900
+    SleepSlow SleepMode= 180
+    SleepMedium SleepMode= 500
+    SleepHigh SleepMode= 900
 )
 
 const (

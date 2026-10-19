@@ -2,9 +2,6 @@ package simulator
 
 
 const TickFrequency = 1
-const maxTicks = 500
-const maxQueueSize = 100000
-const maxInboxSize = 10000
 
 const SendAppendEntriesFreq = 40
 const ElectionTimeout = 100
